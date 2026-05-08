@@ -251,7 +251,9 @@ static void drawClock(const char* timeStr) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
 
-    int startCol = 3;   // (48 - 42) / 2 = 3
+    // 8 个字符(6数字+2冒号)，每个字符间 1 列(5px)间距，共 7 个间隙
+    // 总宽度 = 6*5 + 2*1 + 7*1 = 39 列
+    int startCol = 5;   // (48 - 39) / 2 ≈ 5
     int startRow = 10;  // (27 - 7) / 2 = 10
     int col = startCol;
 
@@ -265,6 +267,10 @@ static void drawClock(const char* timeStr) {
                 drawChar(col, startRow, FONT[idx]);
             }
             col += 5;
+        }
+        // 字符间距：5 像素（1 列），最后一个字符不加
+        if (*(p + 1) != '\0') {
+            col += 1;
         }
     }
 
