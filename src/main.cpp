@@ -2,13 +2,10 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
-#include <time.h>
-#include <ctype.h>
 
 // ========== LED 点阵字体 ==========
-static const char* DEFAULT_TIME = "12:34:56";
-
-static const uint8_t LED_MASKS[38][7] = {
+// 5×7 点阵，每行低 5 位有效（bit4=左, bit0=右）
+static const uint8_t FONT[36][7] = {
     {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // 0
     {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}, // 1
     {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}, // 2
@@ -19,7 +16,6 @@ static const uint8_t LED_MASKS[38][7] = {
     {0x1F, 0x01, 0x02, 0x04, 0x04, 0x04, 0x04}, // 7
     {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}, // 8
     {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x11, 0x0E}, // 9
-    {0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x00}, // : / .
     {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, // A
     {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}, // B
     {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, // C
@@ -46,104 +42,26 @@ static const uint8_t LED_MASKS[38][7] = {
     {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}, // X
     {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, // Y
     {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F}, // Z
-    {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}, // -
 };
 
-static const uint8_t DOT_PITCH = 4;   // 相邻圆点中心距离
-static const uint8_t COLS = 5;
-static const uint8_t ROWS = 7;
-static const uint8_t CHAR_GAP = 2;    // 字符之间额外间隙
+static const uint8_t COLON[4] = {
+    0x00, // 相对行 0: 空
+    0x01, // 相对行 1: 点亮
+    0x00, // 相对行 2: 空
+    0x01, // 相对行 3: 点亮
+};
 
-// 日期小尺寸点阵参数（约为时钟一半大小）
-static const uint8_t DATE_DOT_PITCH = 2;
-static const uint8_t DATE_CHAR_GAP = 1;
-
-static inline int ledIndex(char ch) {
-    if (ch >= '0' && ch <= '9') return ch - '0';
-    if (ch == ':' || ch == '.') return 10;
-    if (ch >= 'A' && ch <= 'Z') return ch - 'A' + 11;
-    if (ch >= 'a' && ch <= 'z') return ch - 'a' + 11;
-    if (ch == '-') return 37;
+static inline int charIndex(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'Z') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'z') return c - 'a' + 10;
     return -1;
 }
 
-template <typename T>
-static void drawLEDCharGfx(T* gfx, int16_t x, int16_t y, char ch, uint16_t color) {
-    int idx = ledIndex(ch);
-    if (idx < 0) return;
-    const uint8_t* mask = LED_MASKS[idx];
-    for (int row = 0; row < ROWS; row++) {
-        uint8_t bits = mask[row];
-        for (int col = 0; col < COLS; col++) {
-            if (bits & (1 << (4 - col))) {
-                int cx = x + col * DOT_PITCH + DOT_PITCH / 2;
-                int cy = y + row * DOT_PITCH + DOT_PITCH / 2;
-                gfx->drawPixel(cx, cy, color);
-            }
-        }
-    }
-}
-
-template <typename T>
-static void drawLEDStringGfx(T* gfx, int16_t x, int16_t y, const char* str, uint16_t color) {
-    while (*str) {
-        drawLEDCharGfx(gfx, x, y, *str, color);
-        x += COLS * DOT_PITCH + CHAR_GAP;
-        str++;
-    }
-}
-
-template <typename T>
-static void drawLEDCharSmall(T* gfx, int16_t x, int16_t y, char ch, uint16_t color) {
-    int idx = ledIndex(ch);
-    if (idx < 0) return;
-    const uint8_t* mask = LED_MASKS[idx];
-    for (int row = 0; row < ROWS; row++) {
-        uint8_t bits = mask[row];
-        for (int col = 0; col < COLS; col++) {
-            if (bits & (1 << (4 - col))) {
-                int cx = x + col * DATE_DOT_PITCH + DATE_DOT_PITCH / 2;
-                int cy = y + row * DATE_DOT_PITCH + DATE_DOT_PITCH / 2;
-                gfx->drawPixel(cx, cy, color);
-            }
-        }
-    }
-}
-
-template <typename T>
-static void drawLEDStringSmall(T* gfx, int16_t x, int16_t y, const char* str, uint16_t color) {
-    while (*str) {
-        if (*str == ' ') {
-            x += 4;
-        } else {
-            drawLEDCharSmall(gfx, x, y, *str, color);
-            x += COLS * DATE_DOT_PITCH + DATE_CHAR_GAP;
-        }
-        str++;
-    }
-}
-
-static int16_t measureLEDStringSmall(const char* str) {
-    int16_t w = 0;
-    int16_t len = strlen(str);
-    for (int i = 0; i < len; i++) {
-        if (str[i] == ' ') {
-            w += 3;
-        } else {
-            w += COLS * DATE_DOT_PITCH;
-            if (i < len - 1) w += DATE_CHAR_GAP;
-        }
-    }
-    return w;
-}
-
-static void drawLEDChar(int16_t x, int16_t y, char ch, uint16_t color) {
-    drawLEDCharGfx(&M5.Display, x, y, ch, color);
-}
-
-static void drawLEDString(int16_t x, int16_t y, const char* str, uint16_t color) {
-    drawLEDStringGfx(&M5.Display, x, y, str, color);
-}
+// ========== LED 点阵背景参数 ==========
+static const uint8_t DOT_SIZE    = 5;   // 每个大像素 5×5
+static const uint8_t DOT_RADIUS  = 2;   // 圆半径
+static const uint8_t DOT_BRIGHT  = 20;  // 255 * 0.08 ≈ 20
 
 // ========== WiFi 配置页面 ==========
 static const char* CONFIG_PAGE_HEAD =
@@ -200,8 +118,6 @@ Preferences prefs;
 WebServer server(80);
 bool apMode = false;
 String wifiOptions;
-M5Canvas timeCanvas(&M5.Display);
-static bool canvasCreated = false;
 
 static String escapeHtml(const String& s) {
     String r = s;
@@ -270,24 +186,6 @@ void startAPMode() {
     server.on("/save", HTTP_POST, handleSave);
     server.begin();
     Serial.println("WebServer started");
-
-    M5.Display.fillScreen(BLACK);
-
-    int16_t charW = COLS * DOT_PITCH;
-    int16_t charH = ROWS * DOT_PITCH;
-    int16_t gap = 8;
-    int16_t line1Len = 7; // "192.168"
-    int16_t line2Len = 3; // "4.1"
-    int16_t line1W = line1Len * charW + (line1Len - 1) * CHAR_GAP;
-    int16_t line2W = line2Len * charW + (line2Len - 1) * CHAR_GAP;
-    int16_t totalH = charH * 2 + gap;
-    int16_t y1 = (M5.Display.height() - totalH) / 2;
-    int16_t y2 = y1 + charH + gap;
-    int16_t x1 = (M5.Display.width() - line1W) / 2;
-    int16_t x2 = (M5.Display.width() - line2W) / 2;
-
-    drawLEDString(x1, y1, "192.168", WHITE);
-    drawLEDString(x2, y2, "4.1", WHITE);
 }
 
 bool tryConnectWiFi() {
@@ -305,71 +203,25 @@ bool tryConnectWiFi() {
         attempts++;
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-        long tzOffset = prefs.getLong("tz_offset", 28800);
-        configTime(tzOffset, 0, "pool.ntp.org", "cn.pool.ntp.org");
-        Serial.printf("NTP sync started, TZ offset: %ld\n", tzOffset);
-        return true;
-    }
-    return false;
+    return WiFi.status() == WL_CONNECTED;
 }
 
-void showTime() {
-    struct tm timeinfo;
-    char timeBuf[9];
-    char dayBuf[4];
-    char monthBuf[4];
-    char dateBuf[3];
-    bool hasTime = getLocalTime(&timeinfo);
+// ========== 绘制 LED 点阵背景 ==========
+static void drawDotMatrixBackground() {
+    int w = M5.Display.width();
+    int h = M5.Display.height();
+    int cols = w / DOT_SIZE;
+    int rows = h / DOT_SIZE;
 
-    if (hasTime) {
-        strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", &timeinfo);
-        strftime(dayBuf, sizeof(dayBuf), "%a", &timeinfo);
-        strftime(monthBuf, sizeof(monthBuf), "%m", &timeinfo);
-        strftime(dateBuf, sizeof(dateBuf), "%d", &timeinfo);
-        for (int i = 0; dayBuf[i]; i++) dayBuf[i] = toupper(dayBuf[i]);
-    } else {
-        strncpy(timeBuf, DEFAULT_TIME, sizeof(timeBuf));
-        timeBuf[sizeof(timeBuf) - 1] = '\0';
-        strncpy(dayBuf, "FRI", sizeof(dayBuf));
-        strncpy(monthBuf, "05", sizeof(monthBuf));
-        strncpy(dateBuf, "08", sizeof(dateBuf));
+    uint16_t dotColor = M5.Display.color565(DOT_BRIGHT, DOT_BRIGHT, DOT_BRIGHT);
+
+    for (int row = 0; row < rows; row++) {
+        for (int col = 0; col < cols; col++) {
+            int cx = col * DOT_SIZE + DOT_SIZE / 2;
+            int cy = row * DOT_SIZE + DOT_SIZE / 2;
+            M5.Display.fillCircle(cx, cy, DOT_RADIUS, dotColor);
+        }
     }
-
-    char dateRightBuf[16];
-    snprintf(dateRightBuf, sizeof(dateRightBuf), "%s-%s", monthBuf, dateBuf);
-
-    int16_t timeCharW = COLS * DOT_PITCH;
-    int16_t timeCharH = ROWS * DOT_PITCH;
-    int16_t timeLen = strlen(timeBuf);
-    int16_t timeW = timeLen * timeCharW + (timeLen - 1) * CHAR_GAP;
-    int16_t timeH = timeCharH;
-
-    int16_t dateCharW = COLS * DATE_DOT_PITCH;
-    int16_t dateCharH = ROWS * DATE_DOT_PITCH;
-    int16_t dateGap = 8;
-
-    int16_t dayW = measureLEDStringSmall(dayBuf);
-    int16_t dateRightW = measureLEDStringSmall(dateRightBuf);
-
-    int16_t spriteW = timeW;
-    int16_t spriteH = dateCharH + dateGap + timeH;
-
-    int16_t screenX = (M5.Display.width() - spriteW) / 2;
-    int16_t screenY = (M5.Display.height() - spriteH) / 2;
-
-    if (!canvasCreated || timeCanvas.width() != spriteW || timeCanvas.height() != spriteH) {
-        if (canvasCreated) timeCanvas.deleteSprite();
-        timeCanvas.createSprite(spriteW, spriteH);
-        canvasCreated = true;
-    }
-
-    timeCanvas.fillScreen(BLACK);
-
-    drawLEDStringSmall(&timeCanvas, 0, 0, dayBuf, WHITE);
-    drawLEDStringSmall(&timeCanvas, spriteW - dateRightW, 0, dateRightBuf, WHITE);
-    drawLEDStringGfx(&timeCanvas, 0, dateCharH + dateGap, timeBuf, WHITE);
-    timeCanvas.pushSprite(screenX, screenY);
 }
 
 // ========== 主程序 ==========
@@ -380,29 +232,24 @@ void setup() {
     M5.Display.setRotation(1);
     M5.Display.fillScreen(BLACK);
 
+    drawDotMatrixBackground();
+
     prefs.begin("m5stick", false);
 
     String ssid = prefs.getString("ssid", "");
     Serial.printf("Saved SSID: %s\n", ssid.c_str());
 
-    if (tryConnectWiFi()) {
-        Serial.println("WiFi connected");
-        showTime();
-    } else {
+    if (!tryConnectWiFi()) {
         Serial.println("WiFi failed, starting AP");
         startAPMode();
+    } else {
+        Serial.println("WiFi connected");
     }
 }
 
 void loop() {
     if (apMode) {
         server.handleClient();
-    } else {
-        static unsigned long lastUpdate = 0;
-        if (millis() - lastUpdate >= 1000) {
-            lastUpdate = millis();
-            showTime();
-        }
     }
     M5.delay(10);
 }
