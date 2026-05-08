@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
+#include <time.h>
 
 // ========== LED 点阵字体 ==========
 // 5×7 点阵，每行低 5 位有效（bit4=左, bit0=右）
@@ -279,7 +280,7 @@ void setup() {
     M5.Display.fillScreen(BLACK);
 
     sprite.createSprite(M5.Display.width(), M5.Display.height());
-    drawClock("12:00");
+    drawClock("00:00:00");
 
     prefs.begin("m5stick", false);
 
@@ -297,6 +298,21 @@ void setup() {
 void loop() {
     if (apMode) {
         server.handleClient();
+    } else {
+        static unsigned long lastUpdate = 0;
+        if (millis() - lastUpdate >= 1000) {
+            lastUpdate = millis();
+
+            struct tm timeinfo;
+            char buf[9];
+            if (getLocalTime(&timeinfo)) {
+                strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
+            } else {
+                strncpy(buf, "00:00:00", sizeof(buf));
+            }
+
+            drawClock(buf);
+        }
     }
     M5.delay(10);
 }
