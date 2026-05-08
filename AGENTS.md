@@ -6,7 +6,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 ## 项目介绍
 
- matrix5 是一个基于 [M5StickS3 ESP32S3 Mini IoT Dev Kit](./docs/M5StickS3.md) 的番茄钟，番茄钟的字体采用了点阵字符[doto_36.h](./src/fonts/doto_36.h)
+ matrix5 是一个基于 [M5StickS3 ESP32S3 Mini IoT Dev Kit](./docs/M5StickS3.md) 的番茄钟
 
 ## 1. Think Before Coding
 
