@@ -1,4 +1,6 @@
-# Specifications
+# M5StickS3
+
+## 规格参数
 
 | Specification         | Parameter                                                                                                                                     |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -19,3 +21,17 @@
 | Product Weight        | 20.0g                                                                                                                                         |
 | Package Size          | 110.0 x 65.0 x 15.0mm                                                                                                                         |
 | Gross Weight          | 29.3g                                                                                                                                         |
+
+## 按键定义
+
+| 名称 | 位置 | M5Unified API |
+|------|------|---------------|
+| BtnA（key1） | 正面大按键，屏幕下方 | `M5.BtnA` |
+| BtnB（key2） | 侧面小按键，机身右侧 | `M5.BtnB` |
+
+按键通过 M5PM1 电源管理芯片管理，非直连 ESP32S3 GPIO。代码中调用 `M5.update()` 更新状态后，使用 `M5.BtnA.isPressed()` / `M5.BtnB.isPressed()` 读取即可。
+
+## 参考文档
+
+- [M5StickS3 官方文档](https://docs.m5stack.com/en/core/StickS3)
+- [原理图 PDF](https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1207/K150_Stick_S3_PRJ_V0.6_20251111_2025_11_17_16_10_24.pdf)
