@@ -1,44 +1,55 @@
 #include <M5Unified.h>
-#include "fonts/doto_36.h"
 
 static const char* DEFAULT_TIME = "12:34:56";
 
-// 将 8bpp 灰度位图混合为 RGB565 后推送到屏幕
-static void drawGlyph(int16_t x, int16_t y, const Glyph& g, uint16_t color) {
-    if (g.w == 0 || g.h == 0) return;
+// 5×7 LED 点阵掩码，每行 5 位（高位在左），7 行从上到下
+static const uint8_t LED_MASKS[11][7] = {
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // 0
+    {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}, // 1
+    {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}, // 2
+    {0x0E, 0x11, 0x01, 0x06, 0x01, 0x11, 0x0E}, // 3
+    {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}, // 4
+    {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E}, // 5
+    {0x0E, 0x11, 0x10, 0x1E, 0x11, 0x11, 0x0E}, // 6
+    {0x1F, 0x01, 0x02, 0x04, 0x04, 0x04, 0x04}, // 7
+    {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}, // 8
+    {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x11, 0x0E}, // 9
+    {0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x00}, // : 单像素居中
+};
 
-    uint8_t fg_r = (color >> 11) & 0x1F;
-    uint8_t fg_g = (color >> 5)  & 0x3F;
-    uint8_t fg_b =  color        & 0x1F;
+static const uint8_t DOT_PITCH = 4;   // 相邻圆点中心距离
+static const uint8_t DOT_RADIUS = 0;  // 单像素圆点
+static const uint8_t COLS = 5;
+static const uint8_t ROWS = 7;
+static const uint8_t CHAR_GAP = 2;    // 字符之间额外间隙
 
-    // 最大字符 22×24 = 528 像素 → 1056 字节，栈上安全
-    uint16_t buf[22 * 24];
-
-    for (int i = 0; i < g.w * g.h; i++) {
-        uint8_t gray = g.bitmap[i];
-        if (gray == 0) {
-            buf[i] = 0x0000;                     // 纯黑背景
-        } else if (gray == 255) {
-            buf[i] = color;                        // 纯色前景
-        } else {
-            uint8_t r = (fg_r * gray) >> 8;
-            uint8_t gv = (fg_g * gray) >> 8;
-            uint8_t b = (fg_b * gray) >> 8;
-            buf[i] = (r << 11) | (gv << 5) | b;
-        }
-    }
-
-    M5.Display.pushImage(x, y, g.w, g.h, buf);
+static inline int ledIndex(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch == ':') return 10;
+    return -1;
 }
 
-static void drawDotoString(int16_t x, int16_t y, const char* str, uint16_t color) {
-    while (*str) {
-        int idx = dotoCharIndex(*str);
-        if (idx >= 0) {
-            const Glyph& g = dotoGlyphs[idx];
-            drawGlyph(x + g.xOffset, y + g.yOffset, g, color);
-            x += g.advance;
+static void drawLEDChar(int16_t x, int16_t y, char ch, uint16_t color) {
+    int idx = ledIndex(ch);
+    if (idx < 0) return;
+
+    const uint8_t* mask = LED_MASKS[idx];
+    for (int row = 0; row < ROWS; row++) {
+        uint8_t bits = mask[row];
+        for (int col = 0; col < COLS; col++) {
+            if (bits & (1 << (4 - col))) {
+                int cx = x + col * DOT_PITCH + DOT_PITCH / 2;
+                int cy = y + row * DOT_PITCH + DOT_PITCH / 2;
+                M5.Display.drawPixel(cx, cy, color);
+            }
         }
+    }
+}
+
+static void drawLEDString(int16_t x, int16_t y, const char* str, uint16_t color) {
+    while (*str) {
+        drawLEDChar(x, y, *str, color);
+        x += COLS * DOT_PITCH + CHAR_GAP;
         str++;
     }
 }
@@ -50,14 +61,16 @@ void setup() {
     M5.Display.setRotation(1);
     M5.Display.fillScreen(BLACK);
 
-    // 计算文本在 240×135 屏幕上的居中位置
-    int16_t textW = strlen(DEFAULT_TIME) * dotoAdvance;   // 8 × 22 = 176
-    int16_t textH = dotoAscent + dotoDescent;              // 35 + 9 = 44（字体总高）
+    int16_t charW = COLS * DOT_PITCH;
+    int16_t charH = ROWS * DOT_PITCH;
+    int16_t len = strlen(DEFAULT_TIME);
+    int16_t textW = len * charW + (len - 1) * CHAR_GAP;
+    int16_t textH = charH;
 
-    int16_t baselineX = (M5.Display.width()  - textW) / 2;
-    int16_t baselineY = (M5.Display.height() - textH) / 2 + dotoAscent;
+    int16_t x = (M5.Display.width()  - textW) / 2;
+    int16_t y = (M5.Display.height() - textH) / 2;
 
-    drawDotoString(baselineX, baselineY, DEFAULT_TIME, WHITE);
+    drawLEDString(x, y, DEFAULT_TIME, WHITE);
 }
 
 void loop() {
