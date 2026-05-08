@@ -117,6 +117,7 @@ static const char* SAVE_OK_PAGE =
 Preferences prefs;
 WebServer server(80);
 bool apMode = false;
+M5Canvas sprite(&M5.Display);
 String wifiOptions;
 
 static String escapeHtml(const String& s) {
@@ -206,22 +207,67 @@ bool tryConnectWiFi() {
     return WiFi.status() == WL_CONNECTED;
 }
 
-// ========== 绘制 LED 点阵背景 ==========
-static void drawDotMatrixBackground() {
-    int w = M5.Display.width();
-    int h = M5.Display.height();
+static void drawDot(int16_t col, int16_t row, uint16_t color) {
+    int cx = col * DOT_SIZE + DOT_SIZE / 2;
+    int cy = row * DOT_SIZE + DOT_SIZE / 2;
+    sprite.fillCircle(cx, cy, DOT_RADIUS, color);
+}
+
+static void drawBackgroundDots() {
+    int w = sprite.width();
+    int h = sprite.height();
     int cols = w / DOT_SIZE;
     int rows = h / DOT_SIZE;
-
-    uint16_t dotColor = M5.Display.color565(DOT_BRIGHT, DOT_BRIGHT, DOT_BRIGHT);
+    uint16_t dimColor = sprite.color565(DOT_BRIGHT, DOT_BRIGHT, DOT_BRIGHT);
 
     for (int row = 0; row < rows; row++) {
         for (int col = 0; col < cols; col++) {
-            int cx = col * DOT_SIZE + DOT_SIZE / 2;
-            int cy = row * DOT_SIZE + DOT_SIZE / 2;
-            M5.Display.fillCircle(cx, cy, DOT_RADIUS, dotColor);
+            drawDot(col, row, dimColor);
         }
     }
+}
+
+static void drawChar(int16_t startCol, int16_t startRow, const uint8_t mask[7]) {
+    for (int row = 0; row < 7; row++) {
+        uint8_t bits = mask[row];
+        for (int col = 0; col < 5; col++) {
+            if (bits & (1 << (4 - col))) {
+                drawDot(startCol + col, startRow + row, WHITE);
+            }
+        }
+    }
+}
+
+static void drawColon(int16_t startCol, int16_t startRow) {
+    for (int row = 0; row < 4; row++) {
+        if (COLON[row]) {
+            drawDot(startCol, startRow + row, WHITE);
+        }
+    }
+}
+
+static void drawClock(const char* timeStr) {
+    sprite.fillSprite(BLACK);
+    drawBackgroundDots();
+
+    int startCol = 3;   // (48 - 42) / 2 = 3
+    int startRow = 10;  // (27 - 7) / 2 = 10
+    int col = startCol;
+
+    for (const char* p = timeStr; *p; p++) {
+        if (*p == ':') {
+            drawColon(col, startRow + 1);  // 冒号垂直居中偏移 1 行
+            col += 1;
+        } else {
+            int idx = charIndex(*p);
+            if (idx >= 0) {
+                drawChar(col, startRow, FONT[idx]);
+            }
+            col += 5;
+        }
+    }
+
+    sprite.pushSprite(0, 0);
 }
 
 // ========== 主程序 ==========
@@ -232,7 +278,8 @@ void setup() {
     M5.Display.setRotation(1);
     M5.Display.fillScreen(BLACK);
 
-    drawDotMatrixBackground();
+    sprite.createSprite(M5.Display.width(), M5.Display.height());
+    drawClock("12:00");
 
     prefs.begin("m5stick", false);
 
