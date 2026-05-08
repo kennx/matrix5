@@ -3,11 +3,12 @@
 #include <WebServer.h>
 #include <Preferences.h>
 #include <time.h>
+#include <ctype.h>
 
 // ========== LED 点阵字体 ==========
 static const char* DEFAULT_TIME = "12:34:56";
 
-static const uint8_t LED_MASKS[11][7] = {
+static const uint8_t LED_MASKS[38][7] = {
     {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // 0
     {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}, // 1
     {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}, // 2
@@ -18,7 +19,34 @@ static const uint8_t LED_MASKS[11][7] = {
     {0x1F, 0x01, 0x02, 0x04, 0x04, 0x04, 0x04}, // 7
     {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E}, // 8
     {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x11, 0x0E}, // 9
-    {0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x00}, // : 单像素居中
+    {0x00, 0x00, 0x04, 0x00, 0x00, 0x04, 0x00}, // : / .
+    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, // A
+    {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}, // B
+    {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, // C
+    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E}, // D
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, // E
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10}, // F
+    {0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0E}, // G
+    {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, // H
+    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, // I
+    {0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0E}, // J
+    {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, // K
+    {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}, // L
+    {0x11, 0x1B, 0x15, 0x11, 0x11, 0x11, 0x11}, // M
+    {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11}, // N
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // O
+    {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}, // P
+    {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D}, // Q
+    {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}, // R
+    {0x0E, 0x11, 0x10, 0x0E, 0x01, 0x11, 0x0E}, // S
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}, // T
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // U
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04}, // V
+    {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A}, // W
+    {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}, // X
+    {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, // Y
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F}, // Z
+    {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00}, // -
 };
 
 static const uint8_t DOT_PITCH = 4;   // 相邻圆点中心距离
@@ -26,9 +54,16 @@ static const uint8_t COLS = 5;
 static const uint8_t ROWS = 7;
 static const uint8_t CHAR_GAP = 2;    // 字符之间额外间隙
 
+// 日期小尺寸点阵参数（约为时钟一半大小）
+static const uint8_t DATE_DOT_PITCH = 2;
+static const uint8_t DATE_CHAR_GAP = 1;
+
 static inline int ledIndex(char ch) {
     if (ch >= '0' && ch <= '9') return ch - '0';
     if (ch == ':' || ch == '.') return 10;
+    if (ch >= 'A' && ch <= 'Z') return ch - 'A' + 11;
+    if (ch >= 'a' && ch <= 'z') return ch - 'a' + 11;
+    if (ch == '-') return 37;
     return -1;
 }
 
@@ -36,7 +71,6 @@ template <typename T>
 static void drawLEDCharGfx(T* gfx, int16_t x, int16_t y, char ch, uint16_t color) {
     int idx = ledIndex(ch);
     if (idx < 0) return;
-
     const uint8_t* mask = LED_MASKS[idx];
     for (int row = 0; row < ROWS; row++) {
         uint8_t bits = mask[row];
@@ -57,6 +91,50 @@ static void drawLEDStringGfx(T* gfx, int16_t x, int16_t y, const char* str, uint
         x += COLS * DOT_PITCH + CHAR_GAP;
         str++;
     }
+}
+
+template <typename T>
+static void drawLEDCharSmall(T* gfx, int16_t x, int16_t y, char ch, uint16_t color) {
+    int idx = ledIndex(ch);
+    if (idx < 0) return;
+    const uint8_t* mask = LED_MASKS[idx];
+    for (int row = 0; row < ROWS; row++) {
+        uint8_t bits = mask[row];
+        for (int col = 0; col < COLS; col++) {
+            if (bits & (1 << (4 - col))) {
+                int cx = x + col * DATE_DOT_PITCH + DATE_DOT_PITCH / 2;
+                int cy = y + row * DATE_DOT_PITCH + DATE_DOT_PITCH / 2;
+                gfx->drawPixel(cx, cy, color);
+            }
+        }
+    }
+}
+
+template <typename T>
+static void drawLEDStringSmall(T* gfx, int16_t x, int16_t y, const char* str, uint16_t color) {
+    while (*str) {
+        if (*str == ' ') {
+            x += 4;
+        } else {
+            drawLEDCharSmall(gfx, x, y, *str, color);
+            x += COLS * DATE_DOT_PITCH + DATE_CHAR_GAP;
+        }
+        str++;
+    }
+}
+
+static int16_t measureLEDStringSmall(const char* str) {
+    int16_t w = 0;
+    int16_t len = strlen(str);
+    for (int i = 0; i < len; i++) {
+        if (str[i] == ' ') {
+            w += 3;
+        } else {
+            w += COLS * DATE_DOT_PITCH;
+            if (i < len - 1) w += DATE_CHAR_GAP;
+        }
+    }
+    return w;
 }
 
 static void drawLEDChar(int16_t x, int16_t y, char ch, uint16_t color) {
@@ -238,29 +316,59 @@ bool tryConnectWiFi() {
 
 void showTime() {
     struct tm timeinfo;
-    char buf[9];
-    if (getLocalTime(&timeinfo)) {
-        strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
+    char timeBuf[9];
+    char dayBuf[4];
+    char monthBuf[4];
+    char dateBuf[3];
+    bool hasTime = getLocalTime(&timeinfo);
+
+    if (hasTime) {
+        strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", &timeinfo);
+        strftime(dayBuf, sizeof(dayBuf), "%a", &timeinfo);
+        strftime(monthBuf, sizeof(monthBuf), "%m", &timeinfo);
+        strftime(dateBuf, sizeof(dateBuf), "%d", &timeinfo);
+        for (int i = 0; dayBuf[i]; i++) dayBuf[i] = toupper(dayBuf[i]);
     } else {
-        strncpy(buf, DEFAULT_TIME, sizeof(buf));
-        buf[sizeof(buf) - 1] = '\0';
+        strncpy(timeBuf, DEFAULT_TIME, sizeof(timeBuf));
+        timeBuf[sizeof(timeBuf) - 1] = '\0';
+        strncpy(dayBuf, "FRI", sizeof(dayBuf));
+        strncpy(monthBuf, "05", sizeof(monthBuf));
+        strncpy(dateBuf, "08", sizeof(dateBuf));
     }
 
-    int16_t charW = COLS * DOT_PITCH;
-    int16_t charH = ROWS * DOT_PITCH;
-    int16_t len = strlen(buf);
-    int16_t textW = len * charW + (len - 1) * CHAR_GAP;
-    int16_t textH = charH;
-    int16_t screenX = (M5.Display.width() - textW) / 2;
-    int16_t screenY = (M5.Display.height() - textH) / 2;
+    char dateRightBuf[16];
+    snprintf(dateRightBuf, sizeof(dateRightBuf), "%s-%s", monthBuf, dateBuf);
 
-    if (!canvasCreated) {
-        timeCanvas.createSprite(textW, textH);
+    int16_t timeCharW = COLS * DOT_PITCH;
+    int16_t timeCharH = ROWS * DOT_PITCH;
+    int16_t timeLen = strlen(timeBuf);
+    int16_t timeW = timeLen * timeCharW + (timeLen - 1) * CHAR_GAP;
+    int16_t timeH = timeCharH;
+
+    int16_t dateCharW = COLS * DATE_DOT_PITCH;
+    int16_t dateCharH = ROWS * DATE_DOT_PITCH;
+    int16_t dateGap = 8;
+
+    int16_t dayW = measureLEDStringSmall(dayBuf);
+    int16_t dateRightW = measureLEDStringSmall(dateRightBuf);
+
+    int16_t spriteW = timeW;
+    int16_t spriteH = dateCharH + dateGap + timeH;
+
+    int16_t screenX = (M5.Display.width() - spriteW) / 2;
+    int16_t screenY = (M5.Display.height() - spriteH) / 2;
+
+    if (!canvasCreated || timeCanvas.width() != spriteW || timeCanvas.height() != spriteH) {
+        if (canvasCreated) timeCanvas.deleteSprite();
+        timeCanvas.createSprite(spriteW, spriteH);
         canvasCreated = true;
     }
 
     timeCanvas.fillScreen(BLACK);
-    drawLEDStringGfx(&timeCanvas, 0, 0, buf, WHITE);
+
+    drawLEDStringSmall(&timeCanvas, 0, 0, dayBuf, WHITE);
+    drawLEDStringSmall(&timeCanvas, spriteW - dateRightW, 0, dateRightBuf, WHITE);
+    drawLEDStringGfx(&timeCanvas, 0, dateCharH + dateGap, timeBuf, WHITE);
     timeCanvas.pushSprite(screenX, screenY);
 }
 
