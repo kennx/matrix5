@@ -1,0 +1,21 @@
+#include "config_validator.h"
+
+static bool isLenInRange(const std::string& s, size_t minLen, size_t maxLen) {
+    return s.size() >= minLen && s.size() <= maxLen;
+}
+
+ConfigError validateConfig(const DeviceConfig& config) {
+    if (!isLenInRange(config.wifiSsid, 1, 32)) {
+        return ConfigError::InvalidField;
+    }
+    if (config.wifiPassword.size() > 64) {
+        return ConfigError::InvalidField;
+    }
+    if (!isLenInRange(config.timezone, 1, 64)) {
+        return ConfigError::InvalidField;
+    }
+    if (!isLenInRange(config.ntpServer, 1, 128)) {
+        return ConfigError::InvalidField;
+    }
+    return ConfigError::Ok;
+}
