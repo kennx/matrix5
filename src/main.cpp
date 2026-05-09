@@ -137,7 +137,7 @@ static void drawBleScreen(const std::string& code) {
     M5.Display.drawString(formatPairingCodeLine(code).c_str(), M5.Display.width() / 2, 64);
     M5.Display.setTextSize(1);
     M5.Display.drawString("Use Chrome page to connect", M5.Display.width() / 2, 96);
-    M5.Display.drawString("Hold BtnA to refresh code", M5.Display.width() / 2, 112);
+    M5.Display.drawString("Hold A+B 5s to refresh", M5.Display.width() / 2, 112);
 }
 
 static void drawStatusScreen(const char* title, const char* line) {
@@ -228,8 +228,14 @@ void loop() {
     }
 
     M5.update();
-    if (M5.BtnA.pressedFor(1500)) {
-        enterBleConfigMode();
+    static bool reconfigTriggered = false;
+    if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
+        if (!reconfigTriggered) {
+            reconfigTriggered = true;
+            enterBleConfigMode();
+        }
+    } else {
+        reconfigTriggered = false;
     }
 
     if (applyRequested) {
@@ -240,6 +246,9 @@ void loop() {
             ConfigError applied = applyNetworkConfig(pendingConfig);
             if (applied == ConfigError::Ok) {
                 bleModeActive = false;
+                bleConfigService.notifyStatus(ConfigState::Done, ConfigError::Ok, "applied");
+                bleConfigService.stop();
+                bleStarted = false;
                 struct tm t;
                 char timebuf[32];
                 if (getLocalTime(&t)) {
@@ -248,7 +257,6 @@ void loop() {
                     std::strncpy(timebuf, "--:--:--", sizeof(timebuf));
                 }
                 drawStatusScreen("SYNC OK", timebuf);
-                bleConfigService.notifyStatus(ConfigState::Done, ConfigError::Ok, "applied");
             } else {
                 bleConfigService.notifyStatus(ConfigState::Error, applied, "apply_failed");
             }
