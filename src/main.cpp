@@ -6,6 +6,8 @@
 #include <cstring>
 
 #include "ble_config_service.h"
+#include "ble_display_text.h"
+#include "config_json.h"
 #include "config_store.h"
 #include "config_types.h"
 #include "config_validator.h"
@@ -49,6 +51,8 @@ DeviceConfig pendingConfig{};
 bool hasPendingConfig = false;
 bool isAuthorized = false;
 bool bleStarted = false;
+bool bleModeActive = false;
+bool applyRequested = false;
 
 M5Canvas sprite(&M5.Display);
 
@@ -123,6 +127,29 @@ static void drawClock(const char* timeStr) {
     sprite.pushSprite(0, 0);
 }
 
+static void drawBleScreen(const std::string& code) {
+    M5.Display.fillScreen(BLACK);
+    M5.Display.setTextColor(WHITE, BLACK);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.setTextSize(2);
+    M5.Display.drawString("BLE CONFIG", M5.Display.width() / 2, 28);
+    M5.Display.setTextSize(2);
+    M5.Display.drawString(formatPairingCodeLine(code).c_str(), M5.Display.width() / 2, 64);
+    M5.Display.setTextSize(1);
+    M5.Display.drawString("Use Chrome page to connect", M5.Display.width() / 2, 96);
+    M5.Display.drawString("Hold BtnA to refresh code", M5.Display.width() / 2, 112);
+}
+
+static void drawStatusScreen(const char* title, const char* line) {
+    M5.Display.fillScreen(BLACK);
+    M5.Display.setTextColor(WHITE, BLACK);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.setTextSize(2);
+    M5.Display.drawString(title, M5.Display.width() / 2, 40);
+    M5.Display.setTextSize(1);
+    M5.Display.drawString(line, M5.Display.width() / 2, 80);
+}
+
 static void enterBleConfigMode() {
     if (!bleStarted) {
         BleConfigCallbacks callbacks;
@@ -132,15 +159,24 @@ static void enterBleConfigMode() {
             return err;
         };
         callbacks.onConfigJson = [&](const std::string& json) {
-            (void)json;
             if (!isAuthorized) return ConfigError::Unauthorized;
-            return ConfigError::JsonParseFailed;
+            DeviceConfig candidate;
+            if (!parseConfigJson(json, candidate)) {
+                return ConfigError::JsonParseFailed;
+            }
+            ConfigError valid = validateConfig(candidate);
+            if (valid != ConfigError::Ok) {
+                return valid;
+            }
+            pendingConfig = candidate;
+            hasPendingConfig = true;
+            return ConfigError::Ok;
         };
         callbacks.onCommand = [&](const std::string& cmd) {
             if (!isAuthorized) return ConfigError::Unauthorized;
             if (cmd != "apply" || !hasPendingConfig) return ConfigError::InvalidField;
-            if (!configStore.save(pendingConfig)) return ConfigError::InvalidField;
-            return applyNetworkConfig(pendingConfig);
+            applyRequested = true;
+            return ConfigError::Ok;
         };
         bleConfigService.begin(callbacks);
         bleStarted = true;
@@ -149,6 +185,8 @@ static void enterBleConfigMode() {
     const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
     isAuthorized = false;
     hasPendingConfig = false;
+    bleModeActive = true;
+    drawBleScreen(newCode);
     bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
 }
 
@@ -168,6 +206,7 @@ void setup() {
     const bool hasConfig = configStore.load(cfgData);
     if (hasConfig && validateConfig(cfgData) == ConfigError::Ok && applyNetworkConfig(cfgData) == ConfigError::Ok) {
         Serial.println("WiFi/NTP ready");
+        bleModeActive = false;
     } else {
         enterBleConfigMode();
     }
@@ -175,7 +214,7 @@ void setup() {
 
 void loop() {
     static unsigned long lastUpdate = 0;
-    if (millis() - lastUpdate >= 1000) {
+    if (!bleModeActive && millis() - lastUpdate >= 1000) {
         lastUpdate = millis();
 
         struct tm timeinfo;
@@ -192,5 +231,29 @@ void loop() {
     if (M5.BtnA.pressedFor(1500)) {
         enterBleConfigMode();
     }
+
+    if (applyRequested) {
+        applyRequested = false;
+        if (!configStore.save(pendingConfig)) {
+            bleConfigService.notifyStatus(ConfigState::Error, ConfigError::InvalidField, "save_failed");
+        } else {
+            ConfigError applied = applyNetworkConfig(pendingConfig);
+            if (applied == ConfigError::Ok) {
+                bleModeActive = false;
+                struct tm t;
+                char timebuf[32];
+                if (getLocalTime(&t)) {
+                    strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &t);
+                } else {
+                    std::strncpy(timebuf, "--:--:--", sizeof(timebuf));
+                }
+                drawStatusScreen("SYNC OK", timebuf);
+                bleConfigService.notifyStatus(ConfigState::Done, ConfigError::Ok, "applied");
+            } else {
+                bleConfigService.notifyStatus(ConfigState::Error, applied, "apply_failed");
+            }
+        }
+    }
+
     M5.delay(10);
 }

@@ -45,18 +45,25 @@ async function connect() {
 
 async function auth() {
   const code = $("pairingCode").value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw new Error("配网码必须是 6 位数字");
+  }
   await authChar.writeValue(te.encode(code));
   log("已发送配网码");
 }
 
 async function applyConfig() {
   const payload = {
-    wifiSsid: $("wifiSsid").value,
+    wifiSsid: $("wifiSsid").value.trim(),
     wifiPassword: $("wifiPassword").value,
-    timezone: $("timezone").value,
-    ntpServer: $("ntpServer").value,
+    timezone: $("timezone").value.trim(),
+    ntpServer: $("ntpServer").value.trim(),
   };
+  if (!payload.wifiSsid || !payload.timezone || !payload.ntpServer) {
+    throw new Error("SSID / 时区 / NTP 不能为空");
+  }
   await configChar.writeValue(te.encode(JSON.stringify(payload)));
+  log(`配置内容: ${JSON.stringify(payload)}`);
   await commandChar.writeValue(te.encode("apply"));
   log("已发送配置与 apply 命令");
 }

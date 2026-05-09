@@ -14,6 +14,7 @@ class BleConfigService {
    public:
     void begin(const BleConfigCallbacks& callbacks);
     void notifyStatus(ConfigState state, ConfigError error, const char* message);
+    void publishResult(ConfigState state, ConfigError error, const char* message);
     void stop();
 
    private:

@@ -1,5 +1,7 @@
 #include "net_apply.h"
 
+#include "timezone_convert.h"
+
 #include <WiFi.h>
 #include <time.h>
 
@@ -16,9 +18,8 @@ ConfigError applyNetworkConfig(const DeviceConfig& config) {
         return ConfigError::WifiConnectFailed;
     }
 
-    setenv("TZ", config.timezone.c_str(), 1);
-    tzset();
-    configTime(0, 0, config.ntpServer.c_str());
+    std::string posixTz = resolvePosixTimezone(config.timezone);
+    configTzTime(posixTz.c_str(), config.ntpServer.c_str(), "pool.ntp.org", "time.google.com");
 
     struct tm t;
     if (!getLocalTime(&t, 5000)) {
