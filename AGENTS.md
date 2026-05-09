@@ -6,7 +6,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 ## 项目介绍
 
- matrix5 是一个基于 [M5StickS3 ESP32S3 Mini IoT Dev Kit](./docs/M5StickS3.md) 的番茄钟
+ matrix5 是一个基于 [M5StickS3 ESP32S3 Mini IoT Dev Kit](./docs/M5StickS3.md) 的番茄钟，使用 ST7789P3 屏幕（135×240 分辨率）。当前已有一个 48×27 的 5×5 圆形点阵背景（`rgba(255,255,255,0.08)`）。
 
 ## 1. Think Before Coding
 
