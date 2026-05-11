@@ -223,6 +223,12 @@ static void enterBleConfigMode() {
         };
         callbacks.onCommand = [&](const std::string& cmd) {
             if (!isAuthorized) return ConfigError::Unauthorized;
+            if (cmd == "clear_paired") {
+                pairedDeviceStore.clear();
+                prefs.putString("paired_devices", "");
+                bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, "cleared");
+                return ConfigError::Ok;
+            }
             if (cmd != "apply" || !hasPendingConfig) return ConfigError::InvalidField;
             applyRequested = true;
             return ConfigError::Ok;
