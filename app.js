@@ -148,6 +148,7 @@ function escapeHtml(str) {
 let pendingDeviceId = null;
 let pendingDeviceName = null;
 let isNewDeviceFlow = false;
+let deleteFlowTarget = null;
 
 function resetConnection() {
   device = null;
@@ -187,9 +188,11 @@ async function connectBle(targetDevice) {
       const s = JSON.parse(raw);
       if (s.state === 8) {
         // PairedDeviceConnected — auto-auth for paired devices
-        setConnectStatus("ok", "已配对设备，自动授权");
-        addOrUpdateDevice({ id: device.id, name: device.name || "matrix5" });
-        setTimeout(() => showConfigView(), 300);
+        if (!deleteFlowTarget) {
+          setConnectStatus("ok", "已配对设备，自动授权");
+          addOrUpdateDevice({ id: device.id, name: device.name || "matrix5" });
+          setTimeout(() => showConfigView(), 300);
+        }
       } else if (s.state === 3) {
         // AuthOk — new device pairing code verified
         setConnectStatus("ok", "授权成功");
@@ -234,7 +237,6 @@ async function startAddFlow() {
   $("searchConnectBtn").style.display = "block";
   $("searchConnectBtn").disabled = false;
   $("searchConnectBtn").textContent = "搜索并连接";
-  $("searchConnectBtn").onclick = null;
   $("connectDesc").textContent = "搜索并选择附近的 matrix5 设备";
   setConnectStatus("", "");
   showView("connect");
@@ -251,13 +253,17 @@ async function startConnectFlow(deviceId, deviceName) {
   $("searchConnectBtn").style.display = "block";
   $("searchConnectBtn").disabled = false;
   $("searchConnectBtn").textContent = "搜索并连接";
-  $("searchConnectBtn").onclick = null;
   $("connectDesc").textContent = `选择设备「${deviceName || "matrix5"}」进行连接`;
   setConnectStatus("", "");
   showView("connect");
 }
 
 async function onSearchConnect() {
+  if (deleteFlowTarget) {
+    await runDeleteFlow();
+    return;
+  }
+
   $("searchConnectBtn").disabled = true;
   $("searchConnectBtn").textContent = "连接中...";
   setConnectStatus("", "");
@@ -324,39 +330,41 @@ async function startDeleteFlow(deviceId, deviceName) {
   $("searchConnectBtn").textContent = "选择设备并删除";
   $("connectDesc").textContent = `选择要删除的设备「${deviceName || "未知设备"}」`;
 
-  // Save to closure variable for one-time button use
-  $("searchConnectBtn").onclick = async () => {
-    $("searchConnectBtn").disabled = true;
-    $("searchConnectBtn").textContent = "删除中...";
+  deleteFlowTarget = { id: deviceId, name: deviceName };
+}
 
-    try {
-      device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [SERVICE_UUID] }],
-      });
+async function runDeleteFlow() {
+  const target = deleteFlowTarget;
+  deleteFlowTarget = null;
+  $("searchConnectBtn").disabled = true;
+  $("searchConnectBtn").textContent = "删除中...";
+  setConnectStatus("", "");
 
-      await connectBle(device);
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }],
+    });
 
-      // Send clear_paired command
-      await commandChar.writeValue(te.encode("clear_paired"));
-      log("已发送 clear_paired 命令");
+    await connectBle(device);
 
-      // Wait for device response (notification: state=BleAdvertising, msg="cleared")
-      setConnectStatus("ok", "配对记录已清除");
-      removeDeviceById(deviceId);
-      log("设备已从列表中移除");
+    await commandChar.writeValue(te.encode("clear_paired"));
+    log("已发送 clear_paired 命令");
 
-      setTimeout(() => {
-        showView("deviceList");
-        renderDeviceList();
-        resetConnection();
-      }, 1500);
-    } catch (e) {
-      $("searchConnectBtn").disabled = false;
-      $("searchConnectBtn").textContent = "选择设备并删除";
-      setConnectStatus("err", `删除失败: ${e.message}`);
-      log(`删除失败: ${e.message}`);
-    }
-  };
+    setConnectStatus("ok", "配对记录已清除");
+    removeDeviceById(target.id);
+    log("设备已从列表中移除");
+
+    setTimeout(() => {
+      showView("deviceList");
+      renderDeviceList();
+      resetConnection();
+    }, 1500);
+  } catch (e) {
+    $("searchConnectBtn").disabled = false;
+    $("searchConnectBtn").textContent = "选择设备并删除";
+    setConnectStatus("err", `删除失败: ${e.message}`);
+    log(`删除失败: ${e.message}`);
+  }
 }
 
 /* ================================================================
@@ -425,9 +433,11 @@ showView("deviceList");
 $("addDeviceBtn").addEventListener("click", startAddFlow);
 $("backFromConnect").addEventListener("click", () => {
   resetConnection();
+  deleteFlowTarget = null;
   showView("deviceList");
 });
 $("backFromConfig").addEventListener("click", () => {
+  deleteFlowTarget = null;
   showView("deviceList");
 });
 $("searchConnectBtn").addEventListener("click", onSearchConnect);
