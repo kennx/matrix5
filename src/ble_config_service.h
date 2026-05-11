@@ -5,6 +5,8 @@
 #include <functional>
 
 struct BleConfigCallbacks {
+    std::function<void(const std::string&)> onConnect;       // 参数：客户端蓝牙地址字符串
+    std::function<void()> onDisconnect;
     std::function<ConfigError(const std::string&)> onAuth;
     std::function<ConfigError(const std::string&)> onConfigJson;
     std::function<ConfigError(const std::string&)> onCommand;

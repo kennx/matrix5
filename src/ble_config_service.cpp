@@ -62,6 +62,19 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
         }
     }
 };
+
+class ServerCallbacks : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+        if (!gCallbacks.onConnect) return;
+        NimBLEAddress addr(desc->peer_id_addr);
+        gCallbacks.onConnect(addr.toString());
+    }
+
+    void onDisconnect(NimBLEServer* pServer) override {
+        if (!gCallbacks.onDisconnect) return;
+        gCallbacks.onDisconnect();
+    }
+};
 }  // namespace
 
 void BleConfigService::begin(const BleConfigCallbacks& callbacks) {
@@ -79,6 +92,7 @@ void BleConfigService::begin(const BleConfigCallbacks& callbacks) {
     authChar->setCallbacks(new AuthCallbacks());
     configChar->setCallbacks(new ConfigCallbacks());
     commandChar->setCallbacks(new CommandCallbacks());
+    server->setCallbacks(new ServerCallbacks());
 
     service->start();
     NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
