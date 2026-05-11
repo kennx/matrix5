@@ -84,9 +84,8 @@ async function connect() {
   commandChar = await service.getCharacteristic(COMMAND_UUID);
   statusChar  = await service.getCharacteristic(STATUS_UUID);
 
-  await statusChar.startNotifications();
-  statusChar.addEventListener("characteristicvaluechanged", (event) => {
-    const raw = td.decode(event.target.value);
+  // 状态处理逻辑（通知 + 初始读取共用）
+  const handleStatus = (raw) => {
     log(`设备状态: ${raw}`);
     try {
       const s = JSON.parse(raw);
@@ -104,7 +103,20 @@ async function connect() {
         setStepStatus(getCurrentStep(), "err", `错误码 ${s.error}: ${s.message}`);
       }
     } catch {}
+  };
+
+  await statusChar.startNotifications();
+  statusChar.addEventListener("characteristicvaluechanged", (event) => {
+    handleStatus(td.decode(event.target.value));
   });
+
+  // 读取当前状态值（设备可能在订阅前已设置状态）
+  try {
+    const value = await statusChar.readValue();
+    handleStatus(td.decode(value));
+  } catch (e) {
+    log(`读取初始状态失败: ${e.message}`);
+  }
 
   setStepActive(2);
   setStepStatus(1, "ok", `已连接: ${device.name || "matrix5"}`);
