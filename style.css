@@ -203,3 +203,120 @@ button:active:not(:disabled) {
   max-height: 240px;
   overflow-y: auto;
 }
+
+/* ---- View switching ---- */
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+/* ---- Header ---- */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.header h1 {
+  margin: 0;
+  flex: 1;
+}
+
+.btn-small {
+  width: auto;
+  padding: 8px 14px;
+  font-size: 13px;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.btn-text {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.btn-text:hover:not(:disabled) {
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+.btn-danger {
+  background: var(--error);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #f87171;
+}
+
+/* ---- Device card ---- */
+.device-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-card .device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.device-card .device-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.device-card .device-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.device-card .device-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.device-card .device-actions button {
+  flex: 1;
+  margin-top: 4px;
+}
+
+.device-card .btn-delete {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+  font-weight: 500;
+}
+
+.device-card .btn-delete:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}
+
+/* ---- Empty state ---- */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--muted);
+}
+
+.empty-state .sub {
+  font-size: 13px;
+  margin-top: 4px;
+}
