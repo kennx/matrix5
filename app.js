@@ -228,6 +228,7 @@ async function startAddFlow() {
   $("searchConnectBtn").style.display = "block";
   $("searchConnectBtn").disabled = false;
   $("searchConnectBtn").textContent = "搜索并连接";
+  $("searchConnectBtn").onclick = null;
   $("connectDesc").textContent = "搜索并选择附近的 matrix5 设备";
   setConnectStatus("", "");
   showView("connect");
@@ -244,6 +245,7 @@ async function startConnectFlow(deviceId, deviceName) {
   $("searchConnectBtn").style.display = "block";
   $("searchConnectBtn").disabled = false;
   $("searchConnectBtn").textContent = "搜索并连接";
+  $("searchConnectBtn").onclick = null;
   $("connectDesc").textContent = `选择设备「${deviceName || "matrix5"}」进行连接`;
   setConnectStatus("", "");
   showView("connect");
