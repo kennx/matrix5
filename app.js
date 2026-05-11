@@ -1,439 +1,155 @@
-const SERVICE_UUID = "91a50001-66d8-4d35-a42b-df7f00c10000";
-const AUTH_UUID    = "91a50002-66d8-4d35-a42b-df7f00c10000";
-const CONFIG_UUID  = "91a50003-66d8-4d35-a42b-df7f00c10000";
-const COMMAND_UUID = "91a50004-66d8-4d35-a42b-df7f00c10000";
-const STATUS_UUID  = "91a50005-66d8-4d35-a42b-df7f00c10000";
-
-const DEVICE_STORAGE_KEY = "matrix5_devices";
-
 const $ = (id) => document.getElementById(id);
 const te = new TextEncoder();
 const td = new TextDecoder();
 
-let device;
-let server;
-let authChar;
-let configChar;
-let commandChar;
-let statusChar;
+let port = null;
+let reader = null;
+let writer = null;
+let readLoopPromise = null;
+let readBuffer = "";
 
 /* ================================================================
-   Device Management (localStorage)
+   Serial Connection
    ================================================================ */
 
-function loadDevices() {
-  try {
-    const raw = localStorage.getItem(DEVICE_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDevices(devices) {
-  localStorage.setItem(DEVICE_STORAGE_KEY, JSON.stringify(devices));
-}
-
-function addOrUpdateDevice(deviceInfo) {
-  const devices = loadDevices();
-  const idx = devices.findIndex((d) => d.id === deviceInfo.id);
-  const now = new Date().toISOString();
-  if (idx >= 0) {
-    devices[idx].name = deviceInfo.name;
-    devices[idx].lastConnected = now;
-  } else {
-    devices.push({
-      id: deviceInfo.id,
-      name: deviceInfo.name,
-      pairedAt: now,
-      lastConnected: now,
-    });
-  }
-  saveDevices(devices);
-}
-
-function removeDeviceById(deviceId) {
-  const devices = loadDevices().filter((d) => d.id !== deviceId);
-  saveDevices(devices);
-}
-
-function isKnownDevice(deviceId) {
-  return loadDevices().some((d) => d.id === deviceId);
-}
-
-function formatLastConnected(iso) {
-  if (!iso) return "从未";
-  const d = new Date(iso);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) {
-    return "今天 " + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  }
-  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) +
-    " " + d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-}
-
-/* ================================================================
-   View Routing
-   ================================================================ */
-
-function showView(name) {
-  document.querySelectorAll(".view").forEach((el) => el.classList.remove("active"));
-  const target = $(name + "View");
-  if (target) target.classList.add("active");
-}
-
-/* ================================================================
-   Device List Page
-   ================================================================ */
-
-function renderDeviceList() {
-  const devices = loadDevices();
-  const listEl = $("deviceList");
-  const emptyEl = $("emptyState");
-
-  if (devices.length === 0) {
-    listEl.innerHTML = "";
-    emptyEl.style.display = "block";
-    return;
-  }
-
-  emptyEl.style.display = "none";
-  listEl.innerHTML = devices
-    .map(
-      (d) => `
-    <div class="device-card" data-id="${d.id}">
-      <div class="device-header">
-        <span class="device-name">${escapeHtml(d.name || "未知设备")}</span>
-        <button class="btn-text btn-delete" data-action="delete" data-id="${d.id}">删除</button>
-      </div>
-      <div class="device-meta">已配对 · 上次连接: ${formatLastConnected(d.lastConnected)}</div>
-      <div class="device-actions">
-        <button data-action="connect" data-id="${d.id}" data-name="${escapeHtml(d.name || "")}">连接配网</button>
-      </div>
-    </div>
-  `
-    )
-    .join("");
-
-  // Bind card button events
-  listEl.querySelectorAll("button[data-action]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      const el = e.currentTarget;
-      const action = el.dataset.action;
-      const id = el.dataset.id;
-      const name = el.dataset.name;
-      if (action === "connect") {
-        startConnectFlow(id, name);
-      } else if (action === "delete") {
-        startDeleteFlow(id, name);
-      }
-    });
-  });
-}
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/* ================================================================
-   Connection Flow (add new device or connect existing device)
-   ================================================================ */
-
-let pendingDeviceId = null;
-let pendingDeviceName = null;
-let isNewDeviceFlow = false;
-let deleteFlowTarget = null;
-
-function resetConnection() {
-  device = null;
-  server = null;
-  authChar = configChar = commandChar = statusChar = null;
-  pendingDeviceId = null;
-  pendingDeviceName = null;
-}
-
-function setConnectStatus(cls, text) {
-  const el = $("connectStatus");
+function setConnectionStatus(cls, text) {
+  const el = $("connectionStatus");
   if (!el) return;
   el.className = "step-status " + (cls || "");
   el.textContent = text || "";
 }
 
-async function connectBle(targetDevice) {
-  server = await targetDevice.gatt.connect();
-  const service = await server.getPrimaryService(SERVICE_UUID);
-  authChar    = await service.getCharacteristic(AUTH_UUID);
-  configChar  = await service.getCharacteristic(CONFIG_UUID);
-  commandChar = await service.getCharacteristic(COMMAND_UUID);
-  statusChar  = await service.getCharacteristic(STATUS_UUID);
-
-  targetDevice.addEventListener("gattserverdisconnected", () => {
-    log("设备断开连接");
-    resetConnection();
-    if ($("connectView").classList.contains("active")) {
-      setConnectStatus("err", "连接已断开");
-    }
-  });
-
-  // Status handler
-  const handleStatus = (raw) => {
-    log(`设备状态: ${raw}`);
-    try {
-      const s = JSON.parse(raw);
-      if (s.state === 8) {
-        // PairedDeviceConnected — auto-auth for paired devices
-        if (!deleteFlowTarget) {
-          setConnectStatus("ok", "已配对设备，自动授权");
-          addOrUpdateDevice({ id: device.id, name: device.name || "matrix5" });
-          setTimeout(() => showConfigView(), 300);
-        }
-      } else if (s.state === 3) {
-        // AuthOk — new device pairing code verified
-        setConnectStatus("ok", "授权成功");
-        addOrUpdateDevice({ id: device.id, name: device.name || "matrix5" });
-        setTimeout(() => showConfigView(), 300);
-      } else if (s.state === 9) {
-        // ScanComplete
-        if (s.error !== 0) {
-          $("wifiScanStatus").textContent = "扫描失败，请手动输入";
-          $("wifiScanList").innerHTML = "";
-        } else {
-          try {
-            const networks = JSON.parse(s.message);
-            renderWifiScanList(networks);
-          } catch {
-            $("wifiScanStatus").textContent = "扫描结果解析失败";
-            $("wifiScanList").innerHTML = "";
-          }
-        }
-      } else if (s.state === 6) {
-        // Done — 配置成功应用
-        $("configStatus").className = "step-status ok";
-        $("configStatus").textContent = "配置已应用成功";
-        setTimeout(() => {
-          showView("deviceList");
-          renderDeviceList();
-          resetConnection();
-        }, 1500);
-      } else if (s.error !== 0) {
-        setConnectStatus("err", `错误码 ${s.error}: ${s.message}`);
-      }
-    } catch {}
-  };
-
-  await statusChar.startNotifications();
-  statusChar.addEventListener("characteristicvaluechanged", (event) => {
-    handleStatus(td.decode(event.target.value));
-  });
-
-  try {
-    const value = await statusChar.readValue();
-    handleStatus(td.decode(value));
-  } catch (e) {
-    log(`读取初始状态失败: ${e.message}`);
-  }
+function setApplyStatus(cls, text) {
+  const el = $("applyStatus");
+  if (!el) return;
+  el.className = "step-status " + (cls || "");
+  el.textContent = text || "";
 }
 
-// Start "Add New Device" flow
-async function startAddFlow() {
-  isNewDeviceFlow = true;
-  pendingDeviceId = null;
-  pendingDeviceName = null;
-  resetConnection();
-
-  $("pairingCodeSection").style.display = "none";
-  $("searchConnectBtn").style.display = "block";
-  $("searchConnectBtn").disabled = false;
-  $("searchConnectBtn").textContent = "搜索并连接";
-  $("connectDesc").textContent = "搜索并选择附近的 matrix5 设备";
-  setConnectStatus("", "");
-  showView("connect");
-}
-
-// Start "Connect Existing Device" flow
-async function startConnectFlow(deviceId, deviceName) {
-  isNewDeviceFlow = false;
-  pendingDeviceId = deviceId;
-  pendingDeviceName = deviceName;
-  resetConnection();
-
-  $("pairingCodeSection").style.display = "none";
-  $("searchConnectBtn").style.display = "block";
-  $("searchConnectBtn").disabled = false;
-  $("searchConnectBtn").textContent = "搜索并连接";
-  $("connectDesc").textContent = `选择设备「${deviceName || "matrix5"}」进行连接`;
-  setConnectStatus("", "");
-  showView("connect");
-}
-
-async function onSearchConnect() {
-  if (deleteFlowTarget) {
-    await runDeleteFlow();
+async function connectDevice() {
+  if (!navigator.serial) {
+    setConnectionStatus("err", "当前浏览器不支持 Web Serial，请使用 Chrome / Edge 桌面版");
     return;
   }
 
-  $("searchConnectBtn").disabled = true;
-  $("searchConnectBtn").textContent = "连接中...";
-  setConnectStatus("", "");
+  $("connectBtn").disabled = true;
+  setConnectionStatus("", "正在请求 USB 设备...");
 
   try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }],
+    port = await navigator.serial.requestPort({
+      filters: [{ usbVendorId: 0x303a }], // Espressif ESP32-S3
     });
 
-    await connectBle(device);
+    await port.open({ baudRate: 115200 });
 
-    if (isNewDeviceFlow) {
-      // New device: show pairing code input
-      $("pairingCodeSection").style.display = "block";
-      $("searchConnectBtn").style.display = "none";
-      $("connectDesc").textContent = `已连接: ${device.name || "matrix5"}，请输入配对码`;
-      setConnectStatus("warn", "请输入设备屏幕上显示的 6 位配对码");
-    } else {
-      // Existing device: wait for auto-auth notification (state=8)
-      $("searchConnectBtn").style.display = "none";
-      $("connectDesc").textContent = `已连接: ${device.name || "matrix5"}`;
-      setConnectStatus("warn", "等待设备授权...");
-    }
+    port.addEventListener("disconnect", () => {
+      onDisconnected();
+    });
+
+    reader = port.readable.getReader();
+    writer = port.writable.getWriter();
+
+    readLoopPromise = readLoop();
+
+    setConnectionStatus("ok", "设备已连接");
+    $("configSection").style.display = "block";
+    log("设备已连接");
+
+    // Request current config from device
+    await sendJson({ cmd: "get_config" });
   } catch (e) {
-    $("searchConnectBtn").disabled = false;
-    $("searchConnectBtn").textContent = "搜索并连接";
-    setConnectStatus("err", `连接失败: ${e.message}`);
+    $("connectBtn").disabled = false;
+    setConnectionStatus("err", `连接失败: ${e.message}`);
     log(`连接失败: ${e.message}`);
   }
 }
 
-async function onVerifyCode() {
-  const code = $("pairingCodeInput").value.trim();
-  if (!/^\d{6}$/.test(code)) {
-    setConnectStatus("err", "配对码必须是 6 位数字");
-    return;
-  }
-  try {
-    await authChar.writeValue(te.encode(code));
-    setConnectStatus("ok", "配对码已发送，等待验证...");
-    log("已发送配对码");
-  } catch (e) {
-    setConnectStatus("err", `验证失败: ${e.message}`);
-    log(`验证失败: ${e.message}`);
-  }
+function onDisconnected() {
+  log("设备已断开");
+  setConnectionStatus("err", "设备已断开");
+  $("configSection").style.display = "none";
+  $("connectBtn").disabled = false;
+  cleanupPort();
 }
 
-/* ================================================================
-   Delete Device Flow
-   ================================================================ */
-
-async function startDeleteFlow(deviceId, deviceName) {
-  if (!confirm(`确定要删除设备「${deviceName || "未知设备"}」的配对记录吗？`)) {
-    return;
+function cleanupPort() {
+  if (reader) {
+    reader.releaseLock();
+    reader = null;
   }
-
-  resetConnection();
-  setConnectStatus("", "");
-  showView("connect");
-
-  $("pairingCodeSection").style.display = "none";
-  $("searchConnectBtn").style.display = "block";
-  $("searchConnectBtn").disabled = false;
-  $("searchConnectBtn").textContent = "选择设备并删除";
-  $("connectDesc").textContent = `选择要删除的设备「${deviceName || "未知设备"}」`;
-
-  deleteFlowTarget = { id: deviceId, name: deviceName };
+  if (writer) {
+    writer.releaseLock();
+    writer = null;
+  }
+  port = null;
+  readBuffer = "";
 }
 
-async function runDeleteFlow() {
-  const target = deleteFlowTarget;
-  deleteFlowTarget = null;
-  $("searchConnectBtn").disabled = true;
-  $("searchConnectBtn").textContent = "删除中...";
-  setConnectStatus("", "");
-
+async function readLoop() {
   try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }],
-    });
-
-    await connectBle(device);
-
-    // 等待设备响应 clear_paired 命令（最多 5 秒）
-    const waitForCleared = new Promise((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("设备响应超时，请确认设备在附近且已配对")),
-        5000
-      );
-      const onStatus = (event) => {
-        const raw = td.decode(event.target.value);
-        try {
-          const s = JSON.parse(raw);
-          if (s.state === 1 && s.message === "cleared") {
-            clearTimeout(timeout);
-            statusChar.removeEventListener("characteristicvaluechanged", onStatus);
-            resolve(s);
-          } else if (s.error !== 0) {
-            clearTimeout(timeout);
-            statusChar.removeEventListener("characteristicvaluechanged", onStatus);
-            reject(new Error(`设备返回错误码 ${s.error}`));
-          }
-        } catch {}
-      };
-      statusChar.addEventListener("characteristicvaluechanged", onStatus);
-    });
-
-    await commandChar.writeValue(te.encode("clear_paired"));
-    log("已发送 clear_paired 命令");
-
-    await waitForCleared;
-
-    // 清除浏览器端的配对记录
-    if (device.forget) {
-      try {
-        await device.forget();
-        log("浏览器配对记录已清除");
-      } catch (e) {
-        log(`清除浏览器配对记录失败: ${e.message}`);
-      }
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      readBuffer += td.decode(value, { stream: true });
+      processBuffer();
     }
-
-    setConnectStatus("ok", "配对记录已清除");
-    removeDeviceById(target.id);
-    log("设备已从列表中移除");
-
-    setTimeout(() => {
-      showView("deviceList");
-      renderDeviceList();
-      resetConnection();
-    }, 1500);
   } catch (e) {
-    $("searchConnectBtn").disabled = false;
-    $("searchConnectBtn").textContent = "选择设备并删除";
-    setConnectStatus("err", `删除失败: ${e.message}`);
-    log(`删除失败: ${e.message}`);
+    if (e.name !== "AbortError" && e.name !== "BreakError") {
+      log(`读取错误: ${e.message}`);
+    }
   }
 }
 
+function processBuffer() {
+  let lines = readBuffer.split("\n");
+  // Keep the last incomplete line in the buffer
+  readBuffer = lines.pop();
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const msg = JSON.parse(trimmed);
+      handleMessage(msg);
+    } catch (e) {
+      console.error("JSON parse error:", trimmed, e);
+    }
+  }
+}
+
+function handleMessage(msg) {
+  log(`收到: ${JSON.stringify(msg)}`);
+
+  if (msg.type === "config" && msg.data) {
+    fillConfigForm(msg.data);
+  } else if (msg.type === "scan_result" && Array.isArray(msg.networks)) {
+    renderWifiScanList(msg.networks);
+  } else if (msg.type === "error") {
+    setApplyStatus("err", `错误 ${msg.code || ""}: ${msg.message || ""}`);
+  } else if (msg.type === "ok" || msg.type === "success") {
+    setApplyStatus("ok", msg.message || "操作成功");
+  }
+}
+
+async function sendJson(obj) {
+  if (!writer) return;
+  const line = JSON.stringify(obj) + "\n";
+  await writer.write(te.encode(line));
+  log(`发送: ${line.trim()}`);
+}
+
 /* ================================================================
-   Config Network Page
+   Config Form
    ================================================================ */
 
-function showConfigView() {
-  $("configStatus").textContent = "";
-  $("configStatus").className = "step-status";
-  $("wifiScanStatus").textContent = "正在扫描附近 Wi-Fi...";
-  $("wifiScanStatus").style.display = "block";
-  $("wifiScanList").innerHTML = "";
-  showView("config");
-  if (commandChar) {
-    commandChar.writeValue(te.encode("scan_wifi")).catch((e) => {
-      $("wifiScanStatus").textContent = "扫描请求失败: " + e.message;
-    });
+function fillConfigForm(data) {
+  if (data.brightness !== undefined) {
+    $("brightness").value = data.brightness;
+    $("brightnessValue").textContent = data.brightness + "%";
   }
+  if (data.wifiSsid !== undefined) $("wifiSsid").value = data.wifiSsid;
+  if (data.wifiPassword !== undefined) $("wifiPassword").value = data.wifiPassword;
+  if (data.timezone !== undefined) $("timezone").value = data.timezone;
+  if (data.ntpServer !== undefined) $("ntpServer").value = data.ntpServer;
 }
 
 function renderWifiScanList(networks) {
@@ -468,36 +184,52 @@ function renderWifiScanList(networks) {
   });
 }
 
+async function onScanWifi() {
+  $("wifiScanStatus").style.display = "block";
+  $("wifiScanStatus").textContent = "正在扫描...";
+  $("wifiScanList").innerHTML = "";
+  await sendJson({ cmd: "scan_wifi" });
+}
+
 async function onApplyConfig() {
-  const payload = {
-    wifiSsid:     $("wifiSsid").value.trim(),
+  const config = {
+    brightness: parseInt($("brightness").value, 10),
+    wifiSsid: $("wifiSsid").value.trim(),
     wifiPassword: $("wifiPassword").value,
-    timezone:     $("timezone").value,
-    ntpServer:    $("ntpServer").value.trim(),
+    timezone: $("timezone").value,
+    ntpServer: $("ntpServer").value.trim(),
   };
-  if (!payload.wifiSsid || !payload.timezone || !payload.ntpServer) {
-    $("configStatus").className = "step-status err";
-    $("configStatus").textContent = "WiFi 名称、时区、NTP 服务器不能为空";
+
+  if (!config.timezone || !config.ntpServer) {
+    setApplyStatus("err", "时区和 NTP 服务器不能为空");
     return;
   }
 
   try {
-    await configChar.writeValue(te.encode(JSON.stringify(payload)));
-    log(`配置内容: ${JSON.stringify(payload)}`);
-    await commandChar.writeValue(te.encode("apply"));
-    $("configStatus").className = "step-status warn";
-    $("configStatus").textContent = "配置已下发，等待设备响应...";
-    log("已发送配置与 apply 命令");
+    const payload = {
+      cmd: "apply",
+      config: config,
+      time: Math.floor(Date.now() / 1000),
+    };
+    await sendJson(payload);
+    setApplyStatus("warn", "配置已下发，等待设备响应...");
   } catch (e) {
-    $("configStatus").className = "step-status err";
-    $("configStatus").textContent = `下发失败: ${e.message}`;
+    setApplyStatus("err", `下发失败: ${e.message}`);
     log(`下发失败: ${e.message}`);
   }
 }
 
 /* ================================================================
-   Log & Compatibility Check
+   Utilities
    ================================================================ */
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function log(msg) {
   $("status").textContent =
@@ -505,11 +237,11 @@ function log(msg) {
 }
 
 function checkCompat() {
-  if (!navigator.bluetooth) {
-    $("compat").textContent = "当前浏览器不支持 Web Bluetooth，请使用 Chrome / Edge。";
-    $("addDeviceBtn").disabled = true;
+  if (!navigator.serial) {
+    $("compat").textContent = "当前浏览器不支持 Web Serial，请使用 Chrome / Edge 桌面版";
+    $("connectBtn").disabled = true;
   } else {
-    $("compat").textContent = "Web Bluetooth 已就绪（Chrome / Edge）";
+    $("compat").textContent = "Web Serial 已就绪（Chrome / Edge 桌面版）";
   }
 }
 
@@ -518,19 +250,11 @@ function checkCompat() {
    ================================================================ */
 
 checkCompat();
-renderDeviceList();
-showView("deviceList");
 
-$("addDeviceBtn").addEventListener("click", startAddFlow);
-$("backFromConnect").addEventListener("click", () => {
-  resetConnection();
-  deleteFlowTarget = null;
-  showView("deviceList");
-});
-$("backFromConfig").addEventListener("click", () => {
-  deleteFlowTarget = null;
-  showView("deviceList");
-});
-$("searchConnectBtn").addEventListener("click", onSearchConnect);
-$("verifyCodeBtn").addEventListener("click", onVerifyCode);
+$("connectBtn").addEventListener("click", connectDevice);
+$("scanWifiBtn").addEventListener("click", onScanWifi);
 $("applyBtn").addEventListener("click", onApplyConfig);
+
+$("brightness").addEventListener("input", (e) => {
+  $("brightnessValue").textContent = e.target.value + "%";
+});

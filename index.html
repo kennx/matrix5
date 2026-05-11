@@ -3,90 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>matrix5 设备管理</title>
+    <title>matrix5 设备配置</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main class="container">
-      <!-- ========== Device List Page ========== -->
-      <div id="deviceListView" class="view">
-        <div class="header">
-          <h1>我的设备</h1>
-          <button id="addDeviceBtn" class="btn-small">+ 添加设备</button>
-        </div>
-        <p id="compat" class="hint"></p>
-        <div id="deviceList"></div>
-        <div id="emptyState" class="empty-state" style="display:none;">
-          <p>暂无设备</p>
-          <p class="sub">点击右上角添加按钮开始</p>
-        </div>
+      <h1>matrix5 设备配置</h1>
+      <p id="compat" class="hint"></p>
+
+      <!-- Connection Section -->
+      <div id="connectionSection" class="card">
+        <p class="desc">通过 USB 连接 ESP32-S3 设备</p>
+        <button id="connectBtn">连接设备</button>
+        <div class="step-status" id="connectionStatus"></div>
       </div>
 
-      <!-- ========== Connect/Auth Page ========== -->
-      <div id="connectView" class="view">
-        <div class="header">
-          <button id="backFromConnect" class="btn-text">← 返回</button>
-          <h1>连接设备</h1>
-        </div>
-        <div class="card">
-          <p id="connectDesc" class="desc">搜索并选择附近的 matrix5 设备</p>
-          <button id="searchConnectBtn">搜索并连接</button>
-          <div id="pairingCodeSection" style="display:none;">
-            <label>配对码</label>
-            <input
-              id="pairingCodeInput"
-              maxlength="6"
-              placeholder="6 位数字"
-              inputmode="numeric"
-              pattern="\d{6}"
-            />
-            <button id="verifyCodeBtn">验证配对码</button>
-          </div>
-          <div class="step-status" id="connectStatus"></div>
-        </div>
-      </div>
+      <!-- Config Form (hidden until connected) -->
+      <div id="configSection" class="card" style="display:none;">
+        <p class="desc">配置设备参数</p>
 
-      <!-- ========== Config Network Page ========== -->
-      <div id="configView" class="view">
-        <div class="header">
-          <button id="backFromConfig" class="btn-text">← 返回</button>
-          <h1>配置网络</h1>
-        </div>
-        <div class="card">
-          <p class="desc">填写 WiFi 和时区信息</p>
-          <label>WiFi 名称</label>
-          <input id="wifiSsid" placeholder="SSID" />
-          <div id="wifiScanStatus" class="scan-status" style="display:none;"></div>
-          <div id="wifiScanList" class="scan-list"></div>
-          <label>WiFi 密码</label>
-          <input id="wifiPassword" type="password" placeholder="密码" />
-          <label>时区</label>
-          <select id="timezone">
-            <option value="Asia/Shanghai">Asia/Shanghai (中国/上海)</option>
-            <option value="Asia/Hong_Kong">Asia/Hong_Kong (香港)</option>
-            <option value="Asia/Taipei">Asia/Taipei (台北)</option>
-            <option value="Asia/Tokyo">Asia/Tokyo (日本/东京)</option>
-            <option value="Asia/Seoul">Asia/Seoul (韩国/首尔)</option>
-            <option value="Asia/Singapore">Asia/Singapore (新加坡)</option>
-            <option value="Asia/Bangkok">Asia/Bangkok (泰国/曼谷)</option>
-            <option value="Asia/Dubai">Asia/Dubai (阿联酋/迪拜)</option>
-            <option value="Europe/London">Europe/London (英国/伦敦)</option>
-            <option value="Europe/Paris">Europe/Paris (法国/巴黎)</option>
-            <option value="Europe/Berlin">Europe/Berlin (德国/柏林)</option>
-            <option value="Europe/Moscow">Europe/Moscow (俄罗斯/莫斯科)</option>
-            <option value="America/New_York">America/New_York (美国/纽约)</option>
-            <option value="America/Los_Angeles">America/Los_Angeles (美国/洛杉矶)</option>
-            <option value="America/Chicago">America/Chicago (美国/芝加哥)</option>
-            <option value="America/Toronto">America/Toronto (加拿大/多伦多)</option>
-            <option value="Australia/Sydney">Australia/Sydney (澳大利亚/悉尼)</option>
-            <option value="Pacific/Auckland">Pacific/Auckland (新西兰/奥克兰)</option>
-            <option value="UTC">UTC</option>
-          </select>
-          <label>NTP 服务器</label>
-          <input id="ntpServer" value="ntp.aliyun.com" />
-          <button id="applyBtn">写入并应用</button>
-          <div class="step-status" id="configStatus"></div>
-        </div>
+        <label>亮度 <span id="brightnessValue" class="muted">50%</span></label>
+        <input id="brightness" type="range" min="1" max="100" value="50" />
+
+        <label>WiFi 名称</label>
+        <input id="wifiSsid" placeholder="留空则不连接 WiFi" />
+        <button id="scanWifiBtn" class="btn-secondary">扫描 WiFi</button>
+        <div id="wifiScanStatus" class="scan-status" style="display:none;"></div>
+        <div id="wifiScanList" class="scan-list"></div>
+
+        <label>WiFi 密码</label>
+        <input id="wifiPassword" type="password" placeholder="密码" />
+
+        <label>时区</label>
+        <select id="timezone">
+          <option value="Asia/Shanghai">Asia/Shanghai (中国/上海)</option>
+          <option value="Asia/Hong_Kong">Asia/Hong_Kong (香港)</option>
+          <option value="Asia/Taipei">Asia/Taipei (台北)</option>
+          <option value="Asia/Tokyo">Asia/Tokyo (日本/东京)</option>
+          <option value="Asia/Seoul">Asia/Seoul (韩国/首尔)</option>
+          <option value="Asia/Singapore">Asia/Singapore (新加坡)</option>
+          <option value="Asia/Bangkok">Asia/Bangkok (泰国/曼谷)</option>
+          <option value="Asia/Dubai">Asia/Dubai (阿联酋/迪拜)</option>
+          <option value="Europe/London">Europe/London (英国/伦敦)</option>
+          <option value="Europe/Paris">Europe/Paris (法国/巴黎)</option>
+          <option value="Europe/Berlin">Europe/Berlin (德国/柏林)</option>
+          <option value="Europe/Moscow">Europe/Moscow (俄罗斯/莫斯科)</option>
+          <option value="America/New_York">America/New_York (美国/纽约)</option>
+          <option value="America/Los_Angeles">America/Los_Angeles (美国/洛杉矶)</option>
+          <option value="America/Chicago">America/Chicago (美国/芝加哥)</option>
+          <option value="America/Toronto">America/Toronto (加拿大/多伦多)</option>
+          <option value="Australia/Sydney">Australia/Sydney (澳大利亚/悉尼)</option>
+          <option value="Pacific/Auckland">Pacific/Auckland (新西兰/奥克兰)</option>
+          <option value="UTC">UTC</option>
+        </select>
+
+        <label>NTP 服务器</label>
+        <input id="ntpServer" value="ntp.aliyun.com" />
+
+        <button id="applyBtn">应用配置</button>
+        <div class="step-status" id="applyStatus"></div>
       </div>
 
       <pre id="status">等待操作...</pre>
