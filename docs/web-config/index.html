@@ -19,8 +19,10 @@
       </section>
 
       <section class="card">
-        <label>WiFi SSID</label>
-        <input id="wifiSsid" />
+        <label>WiFi 名称</label>
+        <input id="wifiSsid" placeholder="SSID" />
+        <div id="wifiScanStatus" class="scan-status" style="display:none;"></div>
+        <div id="wifiScanList" class="scan-list"></div>
         <label>WiFi 密码</label>
         <input id="wifiPassword" type="password" />
         <label>时区</label>
