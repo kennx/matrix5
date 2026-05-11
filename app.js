@@ -121,9 +121,10 @@ function renderDeviceList() {
   // Bind card button events
   listEl.querySelectorAll("button[data-action]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const action = e.target.dataset.action;
-      const id = e.target.dataset.id;
-      const name = e.target.dataset.name;
+      const el = e.currentTarget;
+      const action = el.dataset.action;
+      const id = el.dataset.id;
+      const name = el.dataset.name;
       if (action === "connect") {
         startConnectFlow(id, name);
       } else if (action === "delete") {
@@ -347,8 +348,44 @@ async function runDeleteFlow() {
 
     await connectBle(device);
 
+    // 等待设备响应 clear_paired 命令（最多 5 秒）
+    const waitForCleared = new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("设备响应超时，请确认设备在附近且已配对")),
+        5000
+      );
+      const onStatus = (event) => {
+        const raw = td.decode(event.target.value);
+        try {
+          const s = JSON.parse(raw);
+          if (s.state === 1 && s.message === "cleared") {
+            clearTimeout(timeout);
+            statusChar.removeEventListener("characteristicvaluechanged", onStatus);
+            resolve(s);
+          } else if (s.error !== 0) {
+            clearTimeout(timeout);
+            statusChar.removeEventListener("characteristicvaluechanged", onStatus);
+            reject(new Error(`设备返回错误码 ${s.error}`));
+          }
+        } catch {}
+      };
+      statusChar.addEventListener("characteristicvaluechanged", onStatus);
+    });
+
     await commandChar.writeValue(te.encode("clear_paired"));
     log("已发送 clear_paired 命令");
+
+    await waitForCleared;
+
+    // 清除浏览器端的配对记录
+    if (device.forget) {
+      try {
+        await device.forget();
+        log("浏览器配对记录已清除");
+      } catch (e) {
+        log(`清除浏览器配对记录失败: ${e.message}`);
+      }
+    }
 
     setConnectStatus("ok", "配对记录已清除");
     removeDeviceById(target.id);
