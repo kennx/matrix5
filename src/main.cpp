@@ -13,6 +13,7 @@
 #include "config_validator.h"
 #include "net_apply.h"
 #include "pairing_code.h"
+#include "paired_device_store.h"
 
 // ========== LED 点阵字体 ==========
 static const uint8_t FONT[36][7] = {
@@ -46,6 +47,11 @@ Preferences prefs;
 ConfigStore configStore(prefs);
 PairingCodeManager pairingCodeMgr;
 BleConfigService bleConfigService;
+
+PairedDeviceStore pairedDeviceStore;
+std::string currentConnectedAddr;
+bool isPairedDevice = false;
+bool btnAConfirmPending = false;
 
 DeviceConfig pendingConfig{};
 bool hasPendingConfig = false;
@@ -150,12 +156,56 @@ static void drawStatusScreen(const char* title, const char* line) {
     M5.Display.drawString(line, M5.Display.width() / 2, 80);
 }
 
+static void drawPairedConfirmScreen() {
+    M5.Display.fillScreen(BLACK);
+    M5.Display.setTextColor(WHITE, BLACK);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.setTextSize(2);
+    M5.Display.drawString("PAIRED", M5.Display.width() / 2, 28);
+    M5.Display.setTextSize(2);
+    M5.Display.drawString("Press BtnA", M5.Display.width() / 2, 64);
+    M5.Display.setTextSize(1);
+    M5.Display.drawString("to confirm", M5.Display.width() / 2, 96);
+    M5.Display.drawString("Hold A+B 5s to refresh", M5.Display.width() / 2, 112);
+}
+
 static void enterBleConfigMode() {
     if (!bleStarted) {
         BleConfigCallbacks callbacks;
+        callbacks.onConnect = [&](const std::string& addr) {
+            currentConnectedAddr = addr;
+            if (pairedDeviceStore.isPaired(addr)) {
+                isPairedDevice = true;
+                btnAConfirmPending = true;
+                bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "paired");
+                drawPairedConfirmScreen();
+            } else {
+                isPairedDevice = false;
+                btnAConfirmPending = false;
+                const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
+                drawBleScreen(newCode);
+                bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
+            }
+        };
+
+        callbacks.onDisconnect = [&]() {
+            currentConnectedAddr.clear();
+            isPairedDevice = false;
+            btnAConfirmPending = false;
+            isAuthorized = false;
+            hasPendingConfig = false;
+            applyRequested = false;
+        };
+
         callbacks.onAuth = [&](const std::string& code) {
             ConfigError err = pairingCodeMgr.verify(code, millis());
-            isAuthorized = (err == ConfigError::Ok);
+            if (err == ConfigError::Ok) {
+                isAuthorized = true;
+                if (!currentConnectedAddr.empty() && !pairedDeviceStore.isPaired(currentConnectedAddr)) {
+                    pairedDeviceStore.add(currentConnectedAddr);
+                    prefs.putString("paired_devices", pairedDeviceStore.serialize().c_str());
+                }
+            }
             return err;
         };
         callbacks.onConfigJson = [&](const std::string& json) {
@@ -182,12 +232,21 @@ static void enterBleConfigMode() {
         bleStarted = true;
     }
 
-    const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
     isAuthorized = false;
     hasPendingConfig = false;
     bleModeActive = true;
-    drawBleScreen(newCode);
-    bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
+    isPairedDevice = false;
+    btnAConfirmPending = false;
+    currentConnectedAddr.clear();
+
+    if (pairedDeviceStore.count() > 0) {
+        drawPairedConfirmScreen();
+        bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "waiting_connect");
+    } else {
+        const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
+        drawBleScreen(newCode);
+        bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
+    }
 }
 
 void setup() {
@@ -201,6 +260,7 @@ void setup() {
     drawClock("00:00:00");
 
     prefs.begin("m5stick", false);
+    pairedDeviceStore.deserialize(prefs.getString("paired_devices", "").c_str());
 
     DeviceConfig cfgData;
     const bool hasConfig = configStore.load(cfgData);
@@ -228,6 +288,12 @@ void loop() {
     }
 
     M5.update();
+    if (btnAConfirmPending && M5.BtnA.wasPressed()) {
+        btnAConfirmPending = false;
+        isAuthorized = true;
+        bleConfigService.notifyStatus(ConfigState::AuthOk, ConfigError::Ok, "confirmed");
+        drawStatusScreen("CONFIRMED", "Ready for config");
+    }
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
         if (!reconfigTriggered) {
