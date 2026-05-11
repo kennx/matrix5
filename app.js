@@ -90,7 +90,11 @@ async function connect() {
     log(`设备状态: ${raw}`);
     try {
       const s = JSON.parse(raw);
-      if (s.state === 4) {        // Done
+      if (s.state === 8) {        // PairedDeviceConnected
+        setStepStatus(2, "ok", "设备已配对，请在设备上按 BtnA 确认");
+        setStepActive(3);
+        log("检测到已配对设备，跳过配对码步骤");
+      } else if (s.state === 4) { // Done
         setStepStatus(3, "ok", "配置已应用，设备即将断开蓝牙");
         setStepActive(3);
       } else if (s.error !== 0) { // 任意错误
