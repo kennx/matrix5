@@ -23,6 +23,7 @@ enum class ConfigState : uint8_t {
     Applying,
     Done,
     Error,
+    PairedDeviceConnected,  // 新增：已配对设备连接，等待 BtnA 确认
 };
 
 struct DeviceConfig {
