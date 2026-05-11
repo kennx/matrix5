@@ -12,6 +12,7 @@ enum class ConfigError : uint16_t {
     InvalidField = 2002,
     WifiConnectFailed = 3001,
     NtpSyncFailed = 3002,
+    WifiScanFailed = 3003,
 };
 
 enum class ConfigState : uint8_t {
@@ -24,6 +25,7 @@ enum class ConfigState : uint8_t {
     Done,
     Error,
     PairedDeviceConnected,  // 新增：已配对设备连接，等待 BtnA 确认
+    ScanComplete = 9,
 };
 
 struct DeviceConfig {
