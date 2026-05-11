@@ -7,15 +7,12 @@
 #include <vector>
 #include <algorithm>
 
-#include "ble_config_service.h"
-#include "ble_display_text.h"
 #include "config_json.h"
 #include "config_store.h"
 #include "config_types.h"
 #include "config_validator.h"
 #include "net_apply.h"
-#include "pairing_code.h"
-#include "paired_device_store.h"
+#include "usb_config_service.h"
 
 // ========== LED 点阵字体 ==========
 static const uint8_t FONT[36][7] = {
@@ -47,19 +44,11 @@ static const uint8_t DOT_BRIGHT = 20;
 
 Preferences prefs;
 ConfigStore configStore(prefs);
-PairingCodeManager pairingCodeMgr;
-BleConfigService bleConfigService;
+UsbConfigService usbConfigService;
 
-PairedDeviceStore pairedDeviceStore;
-std::string currentConnectedAddr;
-bool isPairedDevice = false;
-
-DeviceConfig pendingConfig{};
+bool configModeActive = false;
 bool hasPendingConfig = false;
-bool isAuthorized = false;
-bool bleStarted = false;
-bool bleModeActive = false;
-bool applyRequested = false;
+DeviceConfig pendingConfig{};
 bool wifiScanRequested = false;
 bool wifiScanInProgress = false;
 
@@ -136,17 +125,12 @@ static void drawClock(const char* timeStr) {
     sprite.pushSprite(0, 0);
 }
 
-static void drawBleScreen(const std::string& code) {
+static void drawConfigScreen() {
     M5.Display.fillScreen(BLACK);
     M5.Display.setTextColor(WHITE, BLACK);
     M5.Display.setTextDatum(middle_center);
     M5.Display.setTextSize(2);
-    M5.Display.drawString("BLE CONFIG", M5.Display.width() / 2, 28);
-    M5.Display.setTextSize(2);
-    M5.Display.drawString(formatPairingCodeLine(code).c_str(), M5.Display.width() / 2, 64);
-    M5.Display.setTextSize(1);
-    M5.Display.drawString("Use Chrome page to connect", M5.Display.width() / 2, 96);
-    M5.Display.drawString("Hold A+B 5s to refresh", M5.Display.width() / 2, 112);
+    M5.Display.drawString("USB CONFIG", M5.Display.width() / 2, M5.Display.height() / 2);
 }
 
 static void drawStatusScreen(const char* title, const char* line) {
@@ -157,19 +141,6 @@ static void drawStatusScreen(const char* title, const char* line) {
     M5.Display.drawString(title, M5.Display.width() / 2, 40);
     M5.Display.setTextSize(1);
     M5.Display.drawString(line, M5.Display.width() / 2, 80);
-}
-
-static void drawPairedConfirmScreen() {
-    M5.Display.fillScreen(BLACK);
-    M5.Display.setTextColor(WHITE, BLACK);
-    M5.Display.setTextDatum(middle_center);
-    M5.Display.setTextSize(2);
-    M5.Display.drawString("PAIRED", M5.Display.width() / 2, 28);
-    M5.Display.setTextSize(2);
-    M5.Display.drawString("Press BtnA", M5.Display.width() / 2, 64);
-    M5.Display.setTextSize(1);
-    M5.Display.drawString("to confirm", M5.Display.width() / 2, 96);
-    M5.Display.drawString("Hold A+B 5s to refresh", M5.Display.width() / 2, 112);
 }
 
 static std::string escapeJsonString(const std::string& s) {
@@ -219,93 +190,27 @@ static std::string buildScanResultJson(int scanCount) {
     return json;
 }
 
-static void enterBleConfigMode() {
-    if (!bleStarted) {
-        BleConfigCallbacks callbacks;
-        callbacks.onConnect = [&](const std::string& addr) {
-            currentConnectedAddr = addr;
-            if (pairedDeviceStore.isPaired(addr)) {
-                isPairedDevice = true;
-                isAuthorized = true;  // 已配对设备自动授权
-                drawStatusScreen("PAIRED", "Ready for config");
-                delay(300);
-                bleConfigService.notifyStatus(ConfigState::ConfigReceived, ConfigError::Ok, "auto_auth");
-            } else {
-                isPairedDevice = false;
-                const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
-                drawBleScreen(newCode);
-                delay(300);
-                bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, newCode.c_str());
-            }
-        };
+static void enterConfigMode() {
+    configModeActive = true;
+    drawConfigScreen();
 
-        callbacks.onDisconnect = [&]() {
-            currentConnectedAddr.clear();
-            isPairedDevice = false;
-            isAuthorized = false;
-            hasPendingConfig = false;
-            applyRequested = false;
-        };
-
-        callbacks.onAuth = [&](const std::string& code) {
-            ConfigError err = pairingCodeMgr.verify(code, millis());
-            if (err == ConfigError::Ok) {
-                isAuthorized = true;
-                if (!currentConnectedAddr.empty() && !pairedDeviceStore.isPaired(currentConnectedAddr)) {
-                    pairedDeviceStore.add(currentConnectedAddr);
-                    prefs.putString("paired_devices", pairedDeviceStore.serialize().c_str());
-                }
-            }
-            return err;
-        };
-        callbacks.onConfigJson = [&](const std::string& json) {
-            if (!isAuthorized) return ConfigError::InvalidField;
-            DeviceConfig candidate;
-            if (!parseConfigJson(json, candidate)) {
-                return ConfigError::JsonParseFailed;
-            }
-            ConfigError valid = validateConfig(candidate);
-            if (valid != ConfigError::Ok) {
-                return valid;
-            }
-            pendingConfig = candidate;
-            hasPendingConfig = true;
-            return ConfigError::Ok;
-        };
-        callbacks.onCommand = [&](const std::string& cmd) {
-            if (!isAuthorized) return ConfigError::InvalidField;
-            if (cmd == "clear_paired") {
-                pairedDeviceStore.clear();
-                prefs.putString("paired_devices", "");
-                bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, "cleared");
-                return ConfigError::Ok;
-            }
-            if (cmd == "scan_wifi") {
-                wifiScanRequested = true;
-                return ConfigError::Ok;
-            }
-            if (cmd != "apply" || !hasPendingConfig) return ConfigError::InvalidField;
-            applyRequested = true;
-            return ConfigError::Ok;
-        };
-        bleConfigService.begin(callbacks);
-        bleStarted = true;
-    }
-
-    isAuthorized = false;
-    hasPendingConfig = false;
-    bleModeActive = true;
-    isPairedDevice = false;
-    currentConnectedAddr.clear();
-
-    if (pairedDeviceStore.count() > 0) {
-        drawStatusScreen("PAIRED", "Waiting for connect");
-        bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, "waiting_connect");
-    } else {
-        const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
-        drawBleScreen(newCode);
-        bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, newCode.c_str());
-    }
+    UsbConfigCallbacks callbacks;
+    callbacks.onApply = [&](const DeviceConfig& cfg) {
+        pendingConfig = cfg;
+        hasPendingConfig = true;
+    };
+    callbacks.onScanWifi = [&]() {
+        wifiScanRequested = true;
+    };
+    callbacks.onGetConfig = [&]() {
+        DeviceConfig cfg;
+        if (configStore.load(cfg)) {
+            usbConfigService.sendConfig(&cfg);
+        } else {
+            usbConfigService.sendConfig(nullptr);
+        }
+    };
+    usbConfigService.begin(callbacks);
 }
 
 void setup() {
@@ -319,107 +224,100 @@ void setup() {
     drawClock("00:00:00");
 
     prefs.begin("m5stick", false);
-    pairedDeviceStore.deserialize(prefs.getString("paired_devices", "").c_str());
 
     DeviceConfig cfgData;
     const bool hasConfig = configStore.load(cfgData);
-    if (hasConfig && validateConfig(cfgData) == ConfigError::Ok && applyNetworkConfig(cfgData) == ConfigError::Ok) {
-        Serial.println("WiFi/NTP ready");
-        bleModeActive = false;
+    if (hasConfig && validateConfig(cfgData) == ConfigError::Ok) {
+        M5.Display.setBrightness(cfgData.brightness * 255 / 100);
+        if (!cfgData.wifiSsid.empty()) {
+            applyNetworkConfig(cfgData);
+        }
+        configModeActive = false;
     } else {
-        enterBleConfigMode();
+        M5.Display.setBrightness(50 * 255 / 100);
+        enterConfigMode();
     }
 }
 
 void loop() {
     static unsigned long lastUpdate = 0;
-    if (!bleModeActive && millis() - lastUpdate >= 1000) {
-        lastUpdate = millis();
 
-        struct tm timeinfo;
-        char buf[9];
-        if (getLocalTime(&timeinfo)) {
-            strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
-        } else {
-            std::strncpy(buf, "00:00:00", sizeof(buf));
+    if (configModeActive) {
+        usbConfigService.loop();
+
+        if (hasPendingConfig) {
+            hasPendingConfig = false;
+            ConfigError valid = validateConfig(pendingConfig);
+            if (valid != ConfigError::Ok) {
+                usbConfigService.sendError(valid, "validation_failed");
+            } else if (!configStore.save(pendingConfig)) {
+                usbConfigService.sendError(ConfigError::InvalidField, "save_failed");
+            } else {
+                M5.Display.setBrightness(pendingConfig.brightness * 255 / 100);
+
+                uint32_t ts = usbConfigService.getPendingTime();
+                if (ts > 0) {
+                    timeval tv = { static_cast<time_t>(ts), 0 };
+                    settimeofday(&tv, nullptr);
+                }
+
+                if (!pendingConfig.wifiSsid.empty()) {
+                    applyNetworkConfig(pendingConfig);
+                }
+
+                usbConfigService.sendOk("applied");
+                configModeActive = false;
+            }
         }
-        drawClock(buf);
+
+        if (wifiScanRequested && !wifiScanInProgress) {
+            wifiScanRequested = false;
+            wifiScanInProgress = true;
+            WiFi.scanNetworks(true);
+        }
+
+        if (wifiScanInProgress) {
+            int n = WiFi.scanComplete();
+            if (n >= 0) {
+                wifiScanInProgress = false;
+                if (n == 0) {
+                    usbConfigService.sendScanResult("{\"type\":\"scan_result\",\"networks\":[]}");
+                } else {
+                    std::string json = "{\"type\":\"scan_result\",\"networks\":";
+                    json += buildScanResultJson(n);
+                    json += "}";
+                    usbConfigService.sendScanResult(json);
+                }
+                WiFi.scanDelete();
+            } else if (n == -2) {
+                wifiScanInProgress = false;
+                usbConfigService.sendError(ConfigError::WifiScanFailed, "scan_failed");
+            }
+        }
+    } else {
+        if (millis() - lastUpdate >= 1000) {
+            lastUpdate = millis();
+
+            struct tm timeinfo;
+            char buf[9];
+            if (getLocalTime(&timeinfo)) {
+                strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
+            } else {
+                std::strncpy(buf, "00:00:00", sizeof(buf));
+            }
+            drawClock(buf);
+        }
     }
 
     M5.update();
-    static bool clearPairedTriggered = false;
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
         if (!reconfigTriggered) {
             reconfigTriggered = true;
-            clearPairedTriggered = true; // 阻止 B 单独处理分支
-            enterBleConfigMode();
+            enterConfigMode();
         }
     } else {
         reconfigTriggered = false;
-    }
-
-    // 长按 BtnB 5 秒清除所有配对记录（A 同时按下时不触发）
-    if (M5.BtnB.pressedFor(5000)) {
-        if (!clearPairedTriggered) {
-            clearPairedTriggered = true;
-            pairedDeviceStore.clear();
-            prefs.putString("paired_devices", "");
-            drawStatusScreen("CLEARED", "All paired devices removed");
-            delay(2000);
-            enterBleConfigMode();
-        }
-    } else {
-        clearPairedTriggered = false;
-    }
-
-    if (applyRequested) {
-        applyRequested = false;
-        if (!configStore.save(pendingConfig)) {
-            bleConfigService.notifyStatus(ConfigState::Error, ConfigError::InvalidField, "save_failed");
-        } else {
-            ConfigError applied = applyNetworkConfig(pendingConfig);
-            if (applied == ConfigError::Ok) {
-                bleModeActive = false;
-                bleConfigService.notifyStatus(ConfigState::Done, ConfigError::Ok, "applied");
-                bleConfigService.stop();
-                bleStarted = false;
-                struct tm t;
-                char timebuf[32];
-                if (getLocalTime(&t)) {
-                    strftime(timebuf, sizeof(timebuf), "%H:%M:%S", &t);
-                } else {
-                    std::strncpy(timebuf, "--:--:--", sizeof(timebuf));
-                }
-                drawStatusScreen("SYNC OK", timebuf);
-            } else {
-                bleConfigService.notifyStatus(ConfigState::Error, applied, "apply_failed");
-            }
-        }
-    }
-
-    // Wi-Fi async scan
-    if (wifiScanRequested && !wifiScanInProgress) {
-        wifiScanRequested = false;
-        wifiScanInProgress = true;
-        WiFi.scanNetworks(true);
-    }
-
-    if (wifiScanInProgress) {
-        int n = WiFi.scanComplete();
-        if (n >= 0) {
-            wifiScanInProgress = false;
-            if (n == 0) {
-                bleConfigService.notifyStatus(ConfigState::ScanComplete, ConfigError::Ok, "[]");
-            } else {
-                std::string json = buildScanResultJson(n);
-                bleConfigService.notifyStatus(ConfigState::ScanComplete, ConfigError::Ok, json.c_str());
-            }
-            WiFi.scanDelete();
-        } else if (n == -2) {
-            wifiScanInProgress = false;
-            bleConfigService.notifyStatus(ConfigState::ScanComplete, ConfigError::WifiScanFailed, "scan_failed");
-        }
     }
 
     M5.delay(10);
