@@ -177,13 +177,15 @@ static void enterBleConfigMode() {
             if (pairedDeviceStore.isPaired(addr)) {
                 isPairedDevice = true;
                 btnAConfirmPending = true;
-                bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "paired");
                 drawPairedConfirmScreen();
+                delay(300);  // 给网页端时间完成通知订阅
+                bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "paired");
             } else {
                 isPairedDevice = false;
                 btnAConfirmPending = false;
                 const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
                 drawBleScreen(newCode);
+                delay(300);  // 给网页端时间完成通知订阅
                 bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
             }
         };
