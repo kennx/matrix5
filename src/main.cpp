@@ -4,6 +4,8 @@
 #include <time.h>
 
 #include <cstring>
+#include <vector>
+#include <algorithm>
 
 #include "ble_config_service.h"
 #include "ble_display_text.h"
@@ -58,6 +60,8 @@ bool isAuthorized = false;
 bool bleStarted = false;
 bool bleModeActive = false;
 bool applyRequested = false;
+bool wifiScanRequested = false;
+bool wifiScanInProgress = false;
 
 M5Canvas sprite(&M5.Display);
 
@@ -168,6 +172,53 @@ static void drawPairedConfirmScreen() {
     M5.Display.drawString("Hold A+B 5s to refresh", M5.Display.width() / 2, 112);
 }
 
+static std::string escapeJsonString(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        if (c == '"') out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\b') out += "\\b";
+        else if (c == '\f') out += "\\f";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else out += c;
+    }
+    return out;
+}
+
+static std::string buildScanResultJson(int scanCount) {
+    struct Network { std::string ssid; int rssi; };
+    std::vector<Network> networks;
+
+    for (int i = 0; i < scanCount; i++) {
+        std::string ssid = WiFi.SSID(i).c_str();
+        int rssi = WiFi.RSSI(i);
+        if (ssid.empty()) continue;
+        auto it = std::find_if(networks.begin(), networks.end(),
+            [&](const Network& n) { return n.ssid == ssid; });
+        if (it != networks.end()) {
+            if (rssi > it->rssi) it->rssi = rssi;
+        } else {
+            networks.push_back({ssid, rssi});
+        }
+    }
+
+    std::sort(networks.begin(), networks.end(),
+        [](const Network& a, const Network& b) { return a.rssi > b.rssi; });
+
+    if (networks.size() > 5) networks.resize(5);
+
+    std::string json = "[";
+    for (size_t i = 0; i < networks.size(); i++) {
+        if (i > 0) json += ",";
+        json += "{\"ssid\":\"" + escapeJsonString(networks[i].ssid) + "\",\"rssi\":"
+              + std::to_string(networks[i].rssi) + "}";
+    }
+    json += "]";
+    return json;
+}
+
 static void enterBleConfigMode() {
     if (!bleStarted) {
         BleConfigCallbacks callbacks;
@@ -227,6 +278,10 @@ static void enterBleConfigMode() {
                 pairedDeviceStore.clear();
                 prefs.putString("paired_devices", "");
                 bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, "cleared");
+                return ConfigError::Ok;
+            }
+            if (cmd == "scan_wifi") {
+                wifiScanRequested = true;
                 return ConfigError::Ok;
             }
             if (cmd != "apply" || !hasPendingConfig) return ConfigError::InvalidField;
@@ -340,6 +395,30 @@ void loop() {
             } else {
                 bleConfigService.notifyStatus(ConfigState::Error, applied, "apply_failed");
             }
+        }
+    }
+
+    // Wi-Fi async scan
+    if (wifiScanRequested && !wifiScanInProgress) {
+        wifiScanRequested = false;
+        wifiScanInProgress = true;
+        WiFi.scanNetworks(true);
+    }
+
+    if (wifiScanInProgress) {
+        int n = WiFi.scanComplete();
+        if (n >= 0) {
+            wifiScanInProgress = false;
+            if (n == 0) {
+                bleConfigService.notifyStatus(ConfigState::ScanComplete, ConfigError::Ok, "[]");
+            } else {
+                std::string json = buildScanResultJson(n);
+                bleConfigService.notifyStatus(ConfigState::ScanComplete, ConfigError::Ok, json.c_str());
+            }
+            WiFi.scanDelete();
+        } else if (n == -2) {
+            wifiScanInProgress = false;
+            bleConfigService.notifyStatus(ConfigState::ScanComplete, ConfigError::WifiScanFailed, "scan_failed");
         }
     }
 
