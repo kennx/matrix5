@@ -94,6 +94,9 @@ async function connect() {
         setStepStatus(2, "ok", "设备已配对，请在设备上按 BtnA 确认");
         setStepActive(3);
         log("检测到已配对设备，跳过配对码步骤");
+      } else if (s.state === 3) { // AuthOk
+        setStepStatus(2, "ok", "授权成功（设备已确认）");
+        log("设备授权成功");
       } else if (s.state === 4) { // Done
         setStepStatus(3, "ok", "配置已应用，设备即将断开蓝牙");
         setStepActive(3);
