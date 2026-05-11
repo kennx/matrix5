@@ -20,7 +20,7 @@ class AuthCallbacks : public NimBLECharacteristicCallbacks {
         std::string payload = c->getValue();
         ConfigError err = gCallbacks.onAuth(payload);
         if (gStatusChar) {
-            ConfigState state = (err == ConfigError::Ok) ? ConfigState::AuthOk : ConfigState::AuthPending;
+            ConfigState state = ConfigState::ConfigReceived;
             std::string result = "{\"state\":" + std::to_string(static_cast<int>(state)) +
                                  ",\"error\":" + std::to_string(static_cast<int>(err)) +
                                  ",\"message\":\"auth\"}";

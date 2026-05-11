@@ -229,13 +229,13 @@ static void enterBleConfigMode() {
                 isAuthorized = true;  // 已配对设备自动授权
                 drawStatusScreen("PAIRED", "Ready for config");
                 delay(300);
-                bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "auto_auth");
+                bleConfigService.notifyStatus(ConfigState::ConfigReceived, ConfigError::Ok, "auto_auth");
             } else {
                 isPairedDevice = false;
                 const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
                 drawBleScreen(newCode);
                 delay(300);
-                bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
+                bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, newCode.c_str());
             }
         };
 
@@ -259,7 +259,7 @@ static void enterBleConfigMode() {
             return err;
         };
         callbacks.onConfigJson = [&](const std::string& json) {
-            if (!isAuthorized) return ConfigError::Unauthorized;
+            if (!isAuthorized) return ConfigError::InvalidField;
             DeviceConfig candidate;
             if (!parseConfigJson(json, candidate)) {
                 return ConfigError::JsonParseFailed;
@@ -273,11 +273,11 @@ static void enterBleConfigMode() {
             return ConfigError::Ok;
         };
         callbacks.onCommand = [&](const std::string& cmd) {
-            if (!isAuthorized) return ConfigError::Unauthorized;
+            if (!isAuthorized) return ConfigError::InvalidField;
             if (cmd == "clear_paired") {
                 pairedDeviceStore.clear();
                 prefs.putString("paired_devices", "");
-                bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, "cleared");
+                bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, "cleared");
                 return ConfigError::Ok;
             }
             if (cmd == "scan_wifi") {
@@ -300,11 +300,11 @@ static void enterBleConfigMode() {
 
     if (pairedDeviceStore.count() > 0) {
         drawStatusScreen("PAIRED", "Waiting for connect");
-        bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "waiting_connect");
+        bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, "waiting_connect");
     } else {
         const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
         drawBleScreen(newCode);
-        bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
+        bleConfigService.notifyStatus(ConfigState::Idle, ConfigError::Ok, newCode.c_str());
     }
 }
 

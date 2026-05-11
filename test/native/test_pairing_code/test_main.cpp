@@ -11,10 +11,10 @@ int main() {
     assert(code.size() == 6);
     assert(mgr.verify(code, nowMs + 1000) == ConfigError::Ok);
 
-    assert(mgr.verify(code, nowMs + 2000) == ConfigError::PairingCodeInvalid);
+    assert(mgr.verify(code, nowMs + 2000) == ConfigError::InvalidField);
 
     const std::string code2 = mgr.generate(nowMs, 120000);
-    assert(mgr.verify(code2, nowMs + 120001) == ConfigError::PairingCodeExpired);
+    assert(mgr.verify(code2, nowMs + 120001) == ConfigError::InvalidField);
 
     return 0;
 }

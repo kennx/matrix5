@@ -13,12 +13,12 @@ std::string PairingCodeManager::generate(uint32_t nowMs, uint32_t ttlMs) {
 
 ConfigError PairingCodeManager::verify(const std::string& inputCode, uint32_t nowMs) {
     if (activeCode_.empty() || inputCode != activeCode_) {
-        return ConfigError::PairingCodeInvalid;
+        return ConfigError::InvalidField;
     }
     if (nowMs > expireAtMs_) {
         activeCode_.clear();
         expireAtMs_ = 0;
-        return ConfigError::PairingCodeExpired;
+        return ConfigError::InvalidField;
     }
     activeCode_.clear();
     expireAtMs_ = 0;
