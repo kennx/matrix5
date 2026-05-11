@@ -51,7 +51,6 @@ BleConfigService bleConfigService;
 PairedDeviceStore pairedDeviceStore;
 std::string currentConnectedAddr;
 bool isPairedDevice = false;
-bool btnAConfirmPending = false;
 
 DeviceConfig pendingConfig{};
 bool hasPendingConfig = false;
@@ -176,16 +175,15 @@ static void enterBleConfigMode() {
             currentConnectedAddr = addr;
             if (pairedDeviceStore.isPaired(addr)) {
                 isPairedDevice = true;
-                btnAConfirmPending = true;
-                drawPairedConfirmScreen();
-                delay(300);  // 给网页端时间完成通知订阅
-                bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "paired");
+                isAuthorized = true;  // 已配对设备自动授权
+                drawStatusScreen("PAIRED", "Ready for config");
+                delay(300);
+                bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "auto_auth");
             } else {
                 isPairedDevice = false;
-                btnAConfirmPending = false;
                 const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
                 drawBleScreen(newCode);
-                delay(300);  // 给网页端时间完成通知订阅
+                delay(300);
                 bleConfigService.notifyStatus(ConfigState::BleAdvertising, ConfigError::Ok, newCode.c_str());
             }
         };
@@ -193,7 +191,6 @@ static void enterBleConfigMode() {
         callbacks.onDisconnect = [&]() {
             currentConnectedAddr.clear();
             isPairedDevice = false;
-            btnAConfirmPending = false;
             isAuthorized = false;
             hasPendingConfig = false;
             applyRequested = false;
@@ -238,11 +235,10 @@ static void enterBleConfigMode() {
     hasPendingConfig = false;
     bleModeActive = true;
     isPairedDevice = false;
-    btnAConfirmPending = false;
     currentConnectedAddr.clear();
 
     if (pairedDeviceStore.count() > 0) {
-        drawPairedConfirmScreen();
+        drawStatusScreen("PAIRED", "Waiting for connect");
         bleConfigService.notifyStatus(ConfigState::PairedDeviceConnected, ConfigError::Ok, "waiting_connect");
     } else {
         const std::string newCode = pairingCodeMgr.generate(millis(), 120000);
@@ -290,12 +286,6 @@ void loop() {
     }
 
     M5.update();
-    if (btnAConfirmPending && M5.BtnA.wasPressed()) {
-        btnAConfirmPending = false;
-        isAuthorized = true;
-        bleConfigService.notifyStatus(ConfigState::AuthOk, ConfigError::Ok, "confirmed");
-        drawStatusScreen("CONFIRMED", "Ready for config");
-    }
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
         if (!reconfigTriggered) {
@@ -304,6 +294,21 @@ void loop() {
         }
     } else {
         reconfigTriggered = false;
+    }
+
+    // 长按 BtnB 5 秒清除所有配对记录
+    static bool clearPairedTriggered = false;
+    if (M5.BtnB.pressedFor(5000)) {
+        if (!clearPairedTriggered) {
+            clearPairedTriggered = true;
+            pairedDeviceStore.clear();
+            prefs.putString("paired_devices", "");
+            drawStatusScreen("CLEARED", "All paired devices removed");
+            delay(2000);
+            enterBleConfigMode();
+        }
+    } else {
+        clearPairedTriggered = false;
     }
 
     if (applyRequested) {
