@@ -292,18 +292,19 @@ void loop() {
     }
 
     M5.update();
+    static bool clearPairedTriggered = false;
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
         if (!reconfigTriggered) {
             reconfigTriggered = true;
+            clearPairedTriggered = true; // 阻止 B 单独处理分支
             enterBleConfigMode();
         }
     } else {
         reconfigTriggered = false;
     }
 
-    // 长按 BtnB 5 秒清除所有配对记录
-    static bool clearPairedTriggered = false;
+    // 长按 BtnB 5 秒清除所有配对记录（A 同时按下时不触发）
     if (M5.BtnB.pressedFor(5000)) {
         if (!clearPairedTriggered) {
             clearPairedTriggered = true;
