@@ -320,3 +320,50 @@ button:active:not(:disabled) {
   font-size: 13px;
   margin-top: 4px;
 }
+
+/* ---- Wi-Fi scan list ---- */
+.scan-status {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 20px;
+}
+
+.scan-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #1e293b;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+.scan-item:hover {
+  border-color: var(--accent);
+  background: #162032;
+}
+
+.scan-item.selected {
+  border-color: var(--accent);
+  background: #0f2a1a;
+}
+
+.scan-item .ssid {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.scan-item .rssi {
+  font-size: 12px;
+  color: var(--muted);
+}

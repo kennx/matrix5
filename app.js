@@ -199,6 +199,20 @@ async function connectBle(targetDevice) {
         setConnectStatus("ok", "授权成功");
         addOrUpdateDevice({ id: device.id, name: device.name || "matrix5" });
         setTimeout(() => showConfigView(), 300);
+      } else if (s.state === 9) {
+        // ScanComplete
+        if (s.error !== 0) {
+          $("wifiScanStatus").textContent = "扫描失败，请手动输入";
+          $("wifiScanList").innerHTML = "";
+        } else {
+          try {
+            const networks = JSON.parse(s.message);
+            renderWifiScanList(networks);
+          } catch {
+            $("wifiScanStatus").textContent = "扫描结果解析失败";
+            $("wifiScanList").innerHTML = "";
+          }
+        }
       } else if (s.state === 6) {
         // Done — 配置成功应用
         $("configStatus").className = "step-status ok";
@@ -411,7 +425,47 @@ async function runDeleteFlow() {
 function showConfigView() {
   $("configStatus").textContent = "";
   $("configStatus").className = "step-status";
+  $("wifiScanStatus").textContent = "正在扫描附近 Wi-Fi...";
+  $("wifiScanStatus").style.display = "block";
+  $("wifiScanList").innerHTML = "";
   showView("config");
+  if (commandChar) {
+    commandChar.writeValue(te.encode("scan_wifi")).catch((e) => {
+      $("wifiScanStatus").textContent = "扫描请求失败: " + e.message;
+    });
+  }
+}
+
+function renderWifiScanList(networks) {
+  const listEl = $("wifiScanList");
+  const statusEl = $("wifiScanStatus");
+
+  if (networks.length === 0) {
+    statusEl.textContent = "未找到可用 Wi-Fi 网络";
+    listEl.innerHTML = "";
+    return;
+  }
+
+  statusEl.textContent = "点击选择要连接的网络：";
+  listEl.innerHTML = networks
+    .map(
+      (n, idx) => `
+    <div class="scan-item" data-ssid="${escapeHtml(n.ssid)}" data-idx="${idx}">
+      <span class="ssid">${escapeHtml(n.ssid)}</span>
+      <span class="rssi">${n.rssi} dBm</span>
+    </div>
+  `
+    )
+    .join("");
+
+  listEl.querySelectorAll(".scan-item").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      const ssid = e.currentTarget.dataset.ssid;
+      $("wifiSsid").value = ssid;
+      listEl.querySelectorAll(".scan-item").forEach((el) => el.classList.remove("selected"));
+      e.currentTarget.classList.add("selected");
+    });
+  });
 }
 
 async function onApplyConfig() {
