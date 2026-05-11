@@ -90,11 +90,11 @@ async function connect() {
     try {
       const s = JSON.parse(raw);
       if (s.state === 8) {        // PairedDeviceConnected
-        setStepStatus(2, "ok", "设备已配对，请在设备上按 BtnA 确认");
+        setStepStatus(2, "ok", "已配对设备，自动授权");
         setStepActive(3);
-        log("检测到已配对设备，跳过配对码步骤");
+        log("检测到已配对设备，自动授权");
       } else if (s.state === 3) { // AuthOk
-        setStepStatus(2, "ok", "授权成功（设备已确认）");
+        setStepStatus(2, "ok", "授权成功");
         log("设备授权成功");
       } else if (s.state === 4) { // Done
         setStepStatus(3, "ok", "配置已应用，设备即将断开蓝牙");
