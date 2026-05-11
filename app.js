@@ -195,9 +195,15 @@ async function connectBle(targetDevice) {
         setConnectStatus("ok", "授权成功");
         addOrUpdateDevice({ id: device.id, name: device.name || "matrix5" });
         setTimeout(() => showConfigView(), 300);
-      } else if (s.state === 4) {
-        // Done
-        setConnectStatus("ok", "配置已应用，设备即将断开蓝牙");
+      } else if (s.state === 6) {
+        // Done — 配置成功应用
+        $("configStatus").className = "step-status ok";
+        $("configStatus").textContent = "配置已应用成功";
+        setTimeout(() => {
+          showView("deviceList");
+          renderDeviceList();
+          resetConnection();
+        }, 1500);
       } else if (s.error !== 0) {
         setConnectStatus("err", `错误码 ${s.error}: ${s.message}`);
       }
