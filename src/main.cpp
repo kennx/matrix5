@@ -320,6 +320,8 @@ void setup() {
 void loop() {
     static unsigned long lastUpdate = 0;
 
+    M5.update();
+
     if (configModeActive) {
         usbConfigService.loop();
 
@@ -398,10 +400,9 @@ void loop() {
                 drawClock(buf);
             } else if (displayMode == DisplayMode::Date) {
                 char buf[16];
-                if (getLocalTime(&timeinfo)) {
-                    strftime(buf, sizeof(buf), "%A %m %d", &timeinfo);
-                } else {
+                if (!getLocalTime(&timeinfo) || strftime(buf, sizeof(buf), "%a %m %d", &timeinfo) == 0) {
                     std::strncpy(buf, "--- -- --", sizeof(buf));
+                    buf[sizeof(buf) - 1] = '\0';
                 }
                 drawDate(buf);
             } else if (displayMode == DisplayMode::Battery) {
@@ -412,8 +413,6 @@ void loop() {
             }
         }
     }
-
-    M5.update();
 
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
