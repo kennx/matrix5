@@ -141,6 +141,64 @@ static void drawClock(const char* timeStr) {
     sprite.pushSprite(0, 0);
 }
 
+static void drawDate(const char* dateStr) {
+    sprite.fillSprite(BLACK);
+    drawBackgroundDots();
+
+    int startCol = 2;
+    int startRow = 10;
+    int col = startCol;
+
+    for (const char* p = dateStr; *p; p++) {
+        if (*p == ' ') {
+            col += 2;
+        } else {
+            int idx = charIndex(*p);
+            if (idx >= 0) {
+                drawChar(col, startRow, FONT[idx]);
+            }
+            col += 5;
+        }
+        if (*(p + 1) != '\0' && *p != ' ') {
+            col += 1;
+        }
+    }
+
+    sprite.pushSprite(0, 0);
+}
+
+static void drawBattery(const char* batteryStr) {
+    sprite.fillSprite(BLACK);
+    drawBackgroundDots();
+
+    // Calculate total width dynamically for centering
+    int totalCols = 0;
+    for (const char* p = batteryStr; *p; p++) {
+        totalCols += 5;  // each char is 5 columns wide
+    }
+    int len = 0;
+    for (const char* p = batteryStr; *p; p++) len++;
+    if (len > 1) totalCols += (len - 1);  // spacing between chars
+
+    int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
+    if (startCol < 0) startCol = 0;
+    int startRow = 10;
+    int col = startCol;
+
+    for (const char* p = batteryStr; *p; p++) {
+        int idx = charIndex(*p);
+        if (idx >= 0) {
+            drawChar(col, startRow, FONT[idx]);
+        }
+        col += 5;
+        if (*(p + 1) != '\0') {
+            col += 1;
+        }
+    }
+
+    sprite.pushSprite(0, 0);
+}
+
 static void drawConfigScreen() {
     M5.Display.fillScreen(BLACK);
     M5.Display.setTextColor(WHITE, BLACK);
@@ -321,21 +379,42 @@ void loop() {
             }
         }
     } else {
+        M5.update();
+
+        if (M5.BtnA.wasPressed()) {
+            displayMode = static_cast<DisplayMode>(
+                (static_cast<int>(displayMode) + 1) % static_cast<int>(DisplayMode::Count));
+        }
+
         if (millis() - lastUpdate >= 1000) {
             lastUpdate = millis();
 
             struct tm timeinfo;
-            char buf[9];
-            if (getLocalTime(&timeinfo)) {
-                strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
-            } else {
-                std::strncpy(buf, "00:00:00", sizeof(buf));
+            if (displayMode == DisplayMode::Clock) {
+                char buf[9];
+                if (getLocalTime(&timeinfo)) {
+                    strftime(buf, sizeof(buf), "%H:%M:%S", &timeinfo);
+                } else {
+                    std::strncpy(buf, "00:00:00", sizeof(buf));
+                }
+                drawClock(buf);
+            } else if (displayMode == DisplayMode::Date) {
+                char buf[16];
+                if (getLocalTime(&timeinfo)) {
+                    strftime(buf, sizeof(buf), "%a %m %d", &timeinfo);
+                } else {
+                    std::strncpy(buf, "--- -- --", sizeof(buf));
+                }
+                drawDate(buf);
+            } else if (displayMode == DisplayMode::Battery) {
+                char buf[8];
+                int level = M5.Power.getBatteryLevel();
+                snprintf(buf, sizeof(buf), "%d%%", level);
+                drawBattery(buf);
             }
-            drawClock(buf);
         }
     }
 
-    M5.update();
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
         if (!reconfigTriggered) {
