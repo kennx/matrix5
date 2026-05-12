@@ -381,7 +381,7 @@ void loop() {
             }
         }
     } else {
-        if (M5.BtnA.wasPressed()) {
+        if (M5.BtnA.wasClicked()) {
             displayMode = static_cast<DisplayMode>(
                 (static_cast<int>(displayMode) + 1) % static_cast<int>(DisplayMode::Count));
         }
