@@ -36,6 +36,7 @@ class UsbConfigService {
     UsbConfigCallbacks callbacks_;
     bool hasPendingApply_ = false;
     bool hasScanRequest_ = false;
+    bool discardUntilNewline_ = false;
     DeviceConfig pendingConfig_;
     uint32_t pendingTime_ = 0;
     std::string rxBuffer_;

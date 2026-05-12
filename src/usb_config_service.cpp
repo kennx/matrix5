@@ -2,6 +2,10 @@
 
 #include <Arduino.h>
 
+namespace {
+constexpr size_t kMaxRxLineLength = 512;
+}
+
 void UsbConfigService::begin(const UsbConfigCallbacks& callbacks) {
     callbacks_ = callbacks;
 }
@@ -9,11 +13,25 @@ void UsbConfigService::begin(const UsbConfigCallbacks& callbacks) {
 void UsbConfigService::loop() {
     while (Serial.available() > 0) {
         char c = static_cast<char>(Serial.read());
+
+        if (discardUntilNewline_) {
+            if (c == '\n') {
+                discardUntilNewline_ = false;
+            }
+            continue;
+        }
+
         if (c == '\n') {
             processLine(rxBuffer_);
             rxBuffer_.clear();
         } else if (c != '\r') {
-            rxBuffer_ += c;
+            if (rxBuffer_.size() >= kMaxRxLineLength) {
+                rxBuffer_.clear();
+                discardUntilNewline_ = true;
+                sendError(ConfigError::JsonParseFailed, "line_too_long");
+            } else {
+                rxBuffer_ += c;
+            }
         }
     }
 }

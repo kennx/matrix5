@@ -230,7 +230,10 @@ void setup() {
     if (hasConfig && validateConfig(cfgData) == ConfigError::Ok) {
         M5.Display.setBrightness(cfgData.brightness * 255 / 100);
         if (!cfgData.wifiSsid.empty()) {
-            applyNetworkConfig(cfgData);
+            if (applyNetworkConfig(cfgData) != ConfigError::Ok) {
+                enterConfigMode();
+                return;
+            }
         }
         configModeActive = false;
     } else {
@@ -261,12 +264,17 @@ void loop() {
                     settimeofday(&tv, nullptr);
                 }
 
+                ConfigError netErr = ConfigError::Ok;
                 if (!pendingConfig.wifiSsid.empty()) {
-                    applyNetworkConfig(pendingConfig);
+                    netErr = applyNetworkConfig(pendingConfig);
                 }
 
-                usbConfigService.sendOk("applied");
-                configModeActive = false;
+                if (netErr == ConfigError::Ok) {
+                    usbConfigService.sendOk("applied");
+                    configModeActive = false;
+                } else {
+                    usbConfigService.sendError(netErr, "apply_failed");
+                }
             }
         }
 

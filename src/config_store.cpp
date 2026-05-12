@@ -6,7 +6,7 @@ bool ConfigStore::load(DeviceConfig& outConfig) {
     outConfig.timezone = prefs_.getString("timezone", "Asia/Shanghai").c_str();
     outConfig.ntpServer = prefs_.getString("ntp_server", "pool.ntp.org").c_str();
     outConfig.brightness = prefs_.getUChar("brightness", 50);
-    return !outConfig.timezone.empty() && !outConfig.ntpServer.empty();
+    return prefs_.isKey("timezone") && prefs_.isKey("ntp_server");
 }
 
 bool ConfigStore::save(const DeviceConfig& config) {
