@@ -47,6 +47,7 @@ private:
     uint8_t currentRound_ = 1;
     int remainingSeconds_ = 0;
     unsigned long lastTickMs_ = 0;
+    bool tickSeeded_ = false;
     bool beepFlag_ = false;
 
     void startPhase(Phase phase);
