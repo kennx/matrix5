@@ -173,11 +173,11 @@ static void drawBattery(const char* batteryStr) {
 
     // Calculate total width dynamically for centering
     int totalCols = 0;
+    int len = 0;
     for (const char* p = batteryStr; *p; p++) {
         totalCols += 5;  // each char is 5 columns wide
+        len++;
     }
-    int len = 0;
-    for (const char* p = batteryStr; *p; p++) len++;
     if (len > 1) totalCols += (len - 1);  // spacing between chars
 
     int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
@@ -399,7 +399,7 @@ void loop() {
             } else if (displayMode == DisplayMode::Date) {
                 char buf[16];
                 if (getLocalTime(&timeinfo)) {
-                    strftime(buf, sizeof(buf), "%a %m %d", &timeinfo);
+                    strftime(buf, sizeof(buf), "%A %m %d", &timeinfo);
                 } else {
                     std::strncpy(buf, "--- -- --", sizeof(buf));
                 }
