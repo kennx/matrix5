@@ -379,8 +379,6 @@ void loop() {
             }
         }
     } else {
-        M5.update();
-
         if (M5.BtnA.wasPressed()) {
             displayMode = static_cast<DisplayMode>(
                 (static_cast<int>(displayMode) + 1) % static_cast<int>(DisplayMode::Count));
@@ -414,6 +412,8 @@ void loop() {
             }
         }
     }
+
+    M5.update();
 
     static bool reconfigTriggered = false;
     if (M5.BtnA.pressedFor(5000) && M5.BtnB.pressedFor(5000)) {
