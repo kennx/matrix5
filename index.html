@@ -3,36 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>matrix5 设备配置</title>
+    <title>matrix5 配置</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <main class="container">
-      <h1>matrix5 设备配置</h1>
-      <p id="compat" class="hint"></p>
+      <h1>matrix5 配置</h1>
 
-      <!-- Connection Section -->
-      <div id="connectionSection" class="card">
-        <p class="desc">通过 USB 连接 ESP32-S3 设备</p>
+      <div id="connectSection" class="card">
         <button id="connectBtn">连接设备</button>
-        <div class="step-status" id="connectionStatus"></div>
+        <p id="connectStatus" class="hint">未连接</p>
       </div>
 
-      <!-- Config Form (hidden until connected) -->
-      <div id="configSection" class="card" style="display:none;">
-        <p class="desc">配置设备参数</p>
+      <div id="configSection" class="card" style="display: none">
+        <label>屏幕亮度 <span id="brightnessValue">50%</span></label>
+        <input type="range" id="brightness" min="1" max="100" value="50" />
 
-        <label>亮度 <span id="brightnessValue" class="muted">50%</span></label>
-        <input id="brightness" type="range" min="1" max="100" value="50" />
-
-        <label>WiFi 名称</label>
+        <label>WiFi 名称（可选）</label>
         <input id="wifiSsid" placeholder="留空则不连接 WiFi" />
-        <button id="scanWifiBtn" class="btn-secondary">扫描 WiFi</button>
-        <div id="wifiScanStatus" class="scan-status" style="display:none;"></div>
+        <div id="wifiScanStatus" class="scan-status" style="display: none"></div>
         <div id="wifiScanList" class="scan-list"></div>
+        <button id="scanWifiBtn" class="btn-secondary">扫描附近 WiFi</button>
 
         <label>WiFi 密码</label>
-        <input id="wifiPassword" type="password" placeholder="密码" />
+        <input id="wifiPassword" type="password" placeholder="WiFi 密码" />
 
         <label>时区</label>
         <select id="timezone">
@@ -63,8 +57,6 @@
         <button id="applyBtn">应用配置</button>
         <div class="step-status" id="applyStatus"></div>
       </div>
-
-      <pre id="status">等待操作...</pre>
     </main>
     <script type="module" src="./app.js"></script>
   </body>

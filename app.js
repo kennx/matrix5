@@ -5,151 +5,161 @@ const td = new TextDecoder();
 let port = null;
 let reader = null;
 let writer = null;
-let readLoopPromise = null;
-let readBuffer = "";
+let readLoopRunning = false;
 
-/* ================================================================
-   Serial Connection
-   ================================================================ */
-
-function setConnectionStatus(cls, text) {
-  const el = $("connectionStatus");
-  if (!el) return;
-  el.className = "step-status " + (cls || "");
-  el.textContent = text || "";
-}
-
-function setApplyStatus(cls, text) {
-  const el = $("applyStatus");
-  if (!el) return;
-  el.className = "step-status " + (cls || "");
-  el.textContent = text || "";
-}
+const isConnected = () => Boolean(port && writer);
 
 async function connectDevice() {
-  if (!navigator.serial) {
-    setConnectionStatus("err", "当前浏览器不支持 Web Serial，请使用 Chrome / Edge 桌面版");
-    return;
-  }
-
-  $("connectBtn").disabled = true;
-  setConnectionStatus("", "正在请求 USB 设备...");
-
   try {
     port = await navigator.serial.requestPort({
-      filters: [{ usbVendorId: 0x303a }], // Espressif ESP32-S3
+      filters: [{ usbVendorId: 0x303a }],
     });
-
     await port.open({ baudRate: 115200 });
 
-    port.addEventListener("disconnect", () => {
-      onDisconnected();
-    });
-
-    reader = port.readable.getReader();
     writer = port.writable.getWriter();
 
-    readLoopPromise = readLoop();
+    $("connectBtn").style.display = "none";
+    $("connectStatus").textContent = "已连接，等待设备响应...";
+    $("connectStatus").className = "hint ok";
 
-    setConnectionStatus("ok", "设备已连接");
-    $("configSection").style.display = "block";
-    log("设备已连接");
+    startReadLoop();
 
-    // Request current config from device
     await sendJson({ cmd: "get_config" });
   } catch (e) {
-    $("connectBtn").disabled = false;
-    setConnectionStatus("err", `连接失败: ${e.message}`);
-    log(`连接失败: ${e.message}`);
+    $("connectStatus").textContent = "连接失败: " + e.message;
+    $("connectStatus").className = "hint err";
   }
 }
 
-function onDisconnected() {
-  log("设备已断开");
-  setConnectionStatus("err", "设备已断开");
-  $("configSection").style.display = "none";
-  $("connectBtn").disabled = false;
-  cleanupPort();
+async function startReadLoop() {
+  if (readLoopRunning) return;
+  readLoopRunning = true;
+
+  let buffer = "";
+
+  while (port && port.readable) {
+    try {
+      reader = port.readable.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += td.decode(value, { stream: true });
+
+        let lines = buffer.split("\n");
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (line.trim()) handleMessage(line.trim());
+        }
+      }
+    } catch (e) {
+      console.error("Read error:", e);
+    } finally {
+      if (reader) {
+        reader.releaseLock();
+        reader = null;
+      }
+    }
+  }
+
+  readLoopRunning = false;
+  onDisconnected();
 }
 
-function cleanupPort() {
-  if (reader) {
-    reader.releaseLock();
-    reader = null;
-  }
-  if (writer) {
-    writer.releaseLock();
-    writer = null;
-  }
-  port = null;
-  readBuffer = "";
-}
-
-async function readLoop() {
+function handleMessage(line) {
   try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      readBuffer += td.decode(value, { stream: true });
-      processBuffer();
+    const msg = JSON.parse(line);
+    if (msg.type === "config") {
+      if (msg.data) {
+        $("brightness").value = msg.data.brightness || 50;
+        $("brightnessValue").textContent = $("brightness").value + "%";
+        $("wifiSsid").value = msg.data.wifiSsid || "";
+        $("wifiPassword").value = msg.data.wifiPassword || "";
+        $("timezone").value = msg.data.timezone || "Asia/Shanghai";
+        $("ntpServer").value = msg.data.ntpServer || "ntp.aliyun.com";
+      }
+      $("connectStatus").textContent = "配置已加载";
+      $("configSection").style.display = "block";
+    } else if (msg.type === "scan_result") {
+      renderWifiScanList(Array.isArray(msg.networks) ? msg.networks : []);
+    } else if (msg.type === "ok" || msg.type === "success") {
+      $("applyStatus").className = "step-status ok";
+      $("applyStatus").textContent = "配置已应用成功";
+      $("applyBtn").disabled = false;
+    } else if (msg.type === "error") {
+      $("applyStatus").className = "step-status err";
+      const errCode = msg.code ?? "unknown";
+      const errMsg = msg.message || "未知错误";
+      $("applyStatus").textContent = `错误码 ${errCode}: ${errMsg}`;
+      $("applyBtn").disabled = false;
     }
   } catch (e) {
-    if (e.name !== "AbortError" && e.name !== "BreakError") {
-      log(`读取错误: ${e.message}`);
-    }
-  }
-}
-
-function processBuffer() {
-  let lines = readBuffer.split("\n");
-  // Keep the last incomplete line in the buffer
-  readBuffer = lines.pop();
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const msg = JSON.parse(trimmed);
-      handleMessage(msg);
-    } catch (e) {
-      console.error("JSON parse error:", trimmed, e);
-    }
-  }
-}
-
-function handleMessage(msg) {
-  log(`收到: ${JSON.stringify(msg)}`);
-
-  if (msg.type === "config" && msg.data) {
-    fillConfigForm(msg.data);
-  } else if (msg.type === "scan_result" && Array.isArray(msg.networks)) {
-    renderWifiScanList(msg.networks);
-  } else if (msg.type === "error") {
-    setApplyStatus("err", `错误 ${msg.code || ""}: ${msg.message || ""}`);
-  } else if (msg.type === "ok" || msg.type === "success") {
-    setApplyStatus("ok", msg.message || "操作成功");
+    console.error("Parse error:", line, e);
   }
 }
 
 async function sendJson(obj) {
-  if (!writer) return;
-  const line = JSON.stringify(obj) + "\n";
-  await writer.write(te.encode(line));
-  log(`发送: ${line.trim()}`);
+  if (!writer) {
+    throw new Error("设备未连接");
+  }
+  const data = JSON.stringify(obj) + "\n";
+  await writer.write(te.encode(data));
 }
 
-/* ================================================================
-   Config Form
-   ================================================================ */
+function onDisconnected() {
+  $("connectBtn").style.display = "block";
+  $("connectStatus").textContent = "设备已断开";
+  $("connectStatus").className = "hint err";
+  $("configSection").style.display = "none";
+  $("applyBtn").disabled = false;
+  void cleanupConnection();
+}
 
-function fillConfigForm(data) {
-  if (data.brightness !== undefined) {
-    $("brightness").value = data.brightness;
-    $("brightnessValue").textContent = data.brightness + "%";
+async function cleanupConnection() {
+  const currentReader = reader;
+  const currentWriter = writer;
+  const currentPort = port;
+
+  reader = null;
+  writer = null;
+  port = null;
+
+  if (currentReader) {
+    try {
+      await currentReader.cancel();
+    } catch (_e) {}
+    try {
+      currentReader.releaseLock();
+    } catch (_e) {}
   }
-  if (data.wifiSsid !== undefined) $("wifiSsid").value = data.wifiSsid;
-  if (data.wifiPassword !== undefined) $("wifiPassword").value = data.wifiPassword;
-  if (data.timezone !== undefined) $("timezone").value = data.timezone;
-  if (data.ntpServer !== undefined) $("ntpServer").value = data.ntpServer;
+
+  if (currentWriter) {
+    try {
+      currentWriter.releaseLock();
+    } catch (_e) {}
+  }
+
+  if (currentPort && currentPort.readable) {
+    try {
+      await currentPort.close();
+    } catch (_e) {}
+  }
+}
+
+async function onScanWifi() {
+  if (!isConnected()) {
+    $("wifiScanStatus").style.display = "block";
+    $("wifiScanStatus").textContent = "请先连接设备";
+    return;
+  }
+
+  $("wifiScanStatus").style.display = "block";
+  $("wifiScanStatus").textContent = "正在扫描...";
+  $("wifiScanList").innerHTML = "";
+  try {
+    await sendJson({ cmd: "scan_wifi" });
+  } catch (e) {
+    $("wifiScanStatus").textContent = `扫描请求失败: ${e.message}`;
+  }
 }
 
 function renderWifiScanList(networks) {
@@ -184,77 +194,72 @@ function renderWifiScanList(networks) {
   });
 }
 
-async function onScanWifi() {
-  $("wifiScanStatus").style.display = "block";
-  $("wifiScanStatus").textContent = "正在扫描...";
-  $("wifiScanList").innerHTML = "";
-  await sendJson({ cmd: "scan_wifi" });
-}
-
-async function onApplyConfig() {
-  const config = {
-    brightness: parseInt($("brightness").value, 10),
-    wifiSsid: $("wifiSsid").value.trim(),
-    wifiPassword: $("wifiPassword").value,
-    timezone: $("timezone").value,
-    ntpServer: $("ntpServer").value.trim(),
-  };
-
-  if (!config.timezone || !config.ntpServer) {
-    setApplyStatus("err", "时区和 NTP 服务器不能为空");
-    return;
-  }
-
-  try {
-    const payload = {
-      cmd: "apply",
-      config: config,
-      time: Math.floor(Date.now() / 1000),
-    };
-    await sendJson(payload);
-    setApplyStatus("warn", "配置已下发，等待设备响应...");
-  } catch (e) {
-    setApplyStatus("err", `下发失败: ${e.message}`);
-    log(`下发失败: ${e.message}`);
-  }
-}
-
-/* ================================================================
-   Utilities
-   ================================================================ */
-
 function escapeHtml(str) {
-  return String(str)
+  const safe = String(str ?? "");
+  return safe
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
 
-function log(msg) {
-  $("status").textContent =
-    `[${new Date().toLocaleTimeString()}] ${msg}\n` + $("status").textContent;
-}
+async function onApplyConfig() {
+  if (!isConnected()) {
+    $("applyStatus").className = "step-status err";
+    $("applyStatus").textContent = "请先连接设备";
+    return;
+  }
 
-function checkCompat() {
-  if (!navigator.serial) {
-    $("compat").textContent = "当前浏览器不支持 Web Serial，请使用 Chrome / Edge 桌面版";
-    $("connectBtn").disabled = true;
-  } else {
-    $("compat").textContent = "Web Serial 已就绪（Chrome / Edge 桌面版）";
+  const payload = {
+    wifiSsid: $("wifiSsid").value.trim(),
+    wifiPassword: $("wifiPassword").value,
+    timezone: $("timezone").value,
+    ntpServer: $("ntpServer").value.trim(),
+    brightness: parseInt($("brightness").value, 10),
+  };
+
+  if (!Number.isInteger(payload.brightness) || payload.brightness < 1 || payload.brightness > 100) {
+    $("applyStatus").className = "step-status err";
+    $("applyStatus").textContent = "亮度必须在 1 到 100 之间";
+    return;
+  }
+
+  if (!payload.timezone || !payload.ntpServer) {
+    $("applyStatus").className = "step-status err";
+    $("applyStatus").textContent = "时区、NTP 服务器不能为空";
+    return;
+  }
+
+  $("applyStatus").className = "step-status warn";
+  $("applyStatus").textContent = "正在应用配置...";
+  $("applyBtn").disabled = true;
+
+  try {
+    await sendJson({
+      cmd: "apply",
+      config: payload,
+      time: Math.floor(Date.now() / 1000),
+    });
+  } catch (e) {
+    $("applyStatus").className = "step-status err";
+    $("applyStatus").textContent = `下发失败: ${e.message}`;
+    $("applyBtn").disabled = false;
   }
 }
-
-/* ================================================================
-   Initialization
-   ================================================================ */
-
-checkCompat();
-
-$("connectBtn").addEventListener("click", connectDevice);
-$("scanWifiBtn").addEventListener("click", onScanWifi);
-$("applyBtn").addEventListener("click", onApplyConfig);
 
 $("brightness").addEventListener("input", (e) => {
   $("brightnessValue").textContent = e.target.value + "%";
 });
+
+function checkCompat() {
+  if (!navigator.serial) {
+    $("connectStatus").textContent =
+      "当前浏览器不支持 Web Serial，请使用 Chrome / Edge 桌面版";
+    $("connectBtn").disabled = true;
+  }
+}
+
+checkCompat();
+$("connectBtn").addEventListener("click", connectDevice);
+$("scanWifiBtn").addEventListener("click", onScanWifi);
+$("applyBtn").addEventListener("click", onApplyConfig);
