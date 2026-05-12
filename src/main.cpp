@@ -12,6 +12,7 @@
 #include "config_types.h"
 #include "config_validator.h"
 #include "net_apply.h"
+#include "time_sync_utils.h"
 #include "usb_config_service.h"
 
 // ========== LED 点阵字体 ==========
@@ -41,6 +42,10 @@ static const uint8_t COLON[4] = {0x00, 0x01, 0x00, 0x01};
 static const uint8_t DOT_SIZE = 5;
 static const uint8_t DOT_RADIUS = 2;
 static const uint8_t DOT_BRIGHT = 20;
+
+static uint8_t toBacklightLevel(uint8_t percent) {
+    return static_cast<uint8_t>((static_cast<uint16_t>(percent) * 255 + 50) / 100);
+}
 
 Preferences prefs;
 ConfigStore configStore(prefs);
@@ -228,7 +233,8 @@ void setup() {
     DeviceConfig cfgData;
     const bool hasConfig = configStore.load(cfgData);
     if (hasConfig && validateConfig(cfgData) == ConfigError::Ok) {
-        M5.Display.setBrightness(cfgData.brightness * 255 / 100);
+        M5.Display.setBrightness(toBacklightLevel(cfgData.brightness));
+        applyTimezoneEnv(cfgData.timezone);
         if (!cfgData.wifiSsid.empty()) {
             if (applyNetworkConfig(cfgData) != ConfigError::Ok) {
                 enterConfigMode();
@@ -237,7 +243,7 @@ void setup() {
         }
         configModeActive = false;
     } else {
-        M5.Display.setBrightness(50 * 255 / 100);
+        M5.Display.setBrightness(toBacklightLevel(50));
         enterConfigMode();
     }
 }
@@ -256,7 +262,8 @@ void loop() {
             } else if (!configStore.save(pendingConfig)) {
                 usbConfigService.sendError(ConfigError::InvalidField, "save_failed");
             } else {
-                M5.Display.setBrightness(pendingConfig.brightness * 255 / 100);
+                M5.Display.setBrightness(toBacklightLevel(pendingConfig.brightness));
+                applyTimezoneEnv(pendingConfig.timezone);
 
                 uint32_t ts = usbConfigService.getPendingTime();
                 if (ts > 0) {
