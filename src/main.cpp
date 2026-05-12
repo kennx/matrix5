@@ -120,7 +120,16 @@ static void drawClock(const char* timeStr) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
 
-    int startCol = 5;
+    int totalCols = 0;
+    int len = 0;
+    for (const char* p = timeStr; *p; p++) {
+        totalCols += (*p == ':') ? 1 : 5;
+        len++;
+    }
+    if (len > 1) totalCols += (len - 1);
+
+    int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
+    if (startCol < 0) startCol = 0;
     int startRow = 10;
     int col = startCol;
 
