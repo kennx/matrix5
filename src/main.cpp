@@ -330,8 +330,13 @@ void setup() {
 
 void loop() {
     static unsigned long lastUpdate = 0;
+    static bool suppressPomoBtnALongUntilRelease = false;
 
     M5.update();
+
+    if (!M5.BtnA.pressedFor(1)) {
+        suppressPomoBtnALongUntilRelease = false;
+    }
 
     const bool bothButtonsPressed = M5.BtnA.pressedFor(1) && M5.BtnB.pressedFor(1);
 
@@ -410,7 +415,7 @@ void loop() {
             pomodoro.onBtnAClick();
         }
         static bool pomoBtnALongTriggered = false;
-        if (!bothButtonsPressed && M5.BtnA.pressedFor(3000)) {
+        if (!bothButtonsPressed && !suppressPomoBtnALongUntilRelease && M5.BtnA.pressedFor(1000)) {
             if (!pomoBtnALongTriggered) {
                 pomoBtnALongTriggered = true;
                 pomodoro.onBtnALongPress();
@@ -423,7 +428,7 @@ void loop() {
             pomodoro.onBtnBClick();
         }
         static bool pomoBtnBLongTriggered = false;
-        if (!bothButtonsPressed && M5.BtnB.pressedFor(3000)) {
+        if (!bothButtonsPressed && M5.BtnB.pressedFor(1000)) {
             if (!pomoBtnBLongTriggered) {
                 pomoBtnBLongTriggered = true;
                 pomodoro.onBtnBLongPress();
@@ -462,12 +467,13 @@ void loop() {
                 (static_cast<int>(displayMode) + 1) % static_cast<int>(DisplayMode::Count));
         }
 
-        // 长按 BtnA 3s 进入番茄钟
+        // 长按 BtnA 1s 进入番茄钟
         static bool clockBtnALongTriggered = false;
-        if (!bothButtonsPressed && M5.BtnA.pressedFor(3000)) {
+        if (!bothButtonsPressed && M5.BtnA.pressedFor(1000)) {
             if (!clockBtnALongTriggered) {
                 clockBtnALongTriggered = true;
                 pomodoro.enter();
+                suppressPomoBtnALongUntilRelease = true;
             }
         } else {
             clockBtnALongTriggered = false;
