@@ -114,11 +114,6 @@ static void drawColon(int16_t startCol, int16_t startRow) {
     }
 }
 
-static void drawSpace(int16_t startCol, int16_t startRow) {
-    (void)startCol;
-    (void)startRow;
-}
-
 static void drawClock(const char* timeStr) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
