@@ -224,9 +224,15 @@ async function onApplyConfig() {
     return;
   }
 
-  if (!payload.timezone || !payload.ntpServer) {
+  if (!payload.timezone) {
     $("applyStatus").className = "step-status err";
-    $("applyStatus").textContent = "时区、NTP 服务器不能为空";
+    $("applyStatus").textContent = "时区不能为空";
+    return;
+  }
+
+  if (payload.wifiSsid && !payload.ntpServer) {
+    $("applyStatus").className = "step-status err";
+    $("applyStatus").textContent = "连接 WiFi 时 NTP 服务器不能为空";
     return;
   }
 
