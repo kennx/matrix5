@@ -324,6 +324,8 @@ void loop() {
 
     M5.update();
 
+    const bool bothButtonsPressed = M5.BtnA.pressedFor(1) && M5.BtnB.pressedFor(1);
+
     if (configModeActive) {
         usbConfigService.loop();
 
@@ -385,6 +387,8 @@ void loop() {
     } else if (pomodoro.isActive()) {
         // --- 番茄钟活跃 ---
         pomodoro.update(millis());
+        const auto stateBeforeInput = pomodoro.getState();
+        const auto phaseBeforeInput = pomodoro.getPhase();
 
         // 蜂鸣
         if (pomodoro.shouldBeep()) {
@@ -397,7 +401,7 @@ void loop() {
             pomodoro.onBtnAClick();
         }
         static bool pomoBtnALongTriggered = false;
-        if (M5.BtnA.pressedFor(3000)) {
+        if (!bothButtonsPressed && M5.BtnA.pressedFor(3000)) {
             if (!pomoBtnALongTriggered) {
                 pomoBtnALongTriggered = true;
                 pomodoro.onBtnALongPress();
@@ -410,7 +414,7 @@ void loop() {
             pomodoro.onBtnBClick();
         }
         static bool pomoBtnBLongTriggered = false;
-        if (M5.BtnB.pressedFor(3000)) {
+        if (!bothButtonsPressed && M5.BtnB.pressedFor(3000)) {
             if (!pomoBtnBLongTriggered) {
                 pomoBtnBLongTriggered = true;
                 pomodoro.onBtnBLongPress();
@@ -419,14 +423,25 @@ void loop() {
             pomoBtnBLongTriggered = false;
         }
 
+        const bool forcePomoRedraw =
+            pomodoro.getState() != stateBeforeInput || pomodoro.getPhase() != phaseBeforeInput;
+
         // 渲染
         static unsigned long lastPomoUpdate = 0;
         if (pomodoro.getState() == Pomodoro::State::ModeSelect) {
             // 模式选择页：每次都刷新（响应按键切换）
             drawBattery(pomodoro.getModeDisplayName());
-        } else if (millis() - lastPomoUpdate >= 1000) {
+        } else if (pomodoro.getState() == Pomodoro::State::Running) {
             // 计时页：每秒更新
-            lastPomoUpdate = millis();
+            unsigned long nowMs = millis();
+            if (forcePomoRedraw || nowMs - lastPomoUpdate >= 1000) {
+                lastPomoUpdate = nowMs;
+                char buf[6];
+                pomodoro.getTimeDisplay(buf, sizeof(buf));
+                drawClock(buf);
+            }
+        } else if (forcePomoRedraw) {
+            // Paused：仅在状态/阶段变化时刷新一次
             char buf[6];
             pomodoro.getTimeDisplay(buf, sizeof(buf));
             drawClock(buf);
@@ -440,7 +455,7 @@ void loop() {
 
         // 长按 BtnA 3s 进入番茄钟
         static bool clockBtnALongTriggered = false;
-        if (M5.BtnA.pressedFor(3000)) {
+        if (!bothButtonsPressed && M5.BtnA.pressedFor(3000)) {
             if (!clockBtnALongTriggered) {
                 clockBtnALongTriggered = true;
                 pomodoro.enter();

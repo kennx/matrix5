@@ -189,6 +189,27 @@ static void test_skip_phase() {
     assert(strcmp(buf, "05:00") == 0);
 }
 
+static void test_skip_phase_while_paused() {
+    Pomodoro p;
+    p.enter();
+    p.onBtnALongPress();  // start Normal
+
+    p.update(0);
+    p.update(5000);  // 5 seconds in
+
+    p.onBtnBClick();  // pause
+    assert(p.getState() == Pomodoro::State::Paused);
+
+    p.onBtnALongPress();  // skip while paused
+    assert(p.getState() == Pomodoro::State::Running);
+    assert(p.getPhase() == Pomodoro::Phase::ShortBreak);
+    assert(!p.shouldBeep());
+
+    char buf[6];
+    p.getTimeDisplay(buf, sizeof(buf));
+    assert(strcmp(buf, "05:00") == 0);
+}
+
 static void test_exit_to_mode_select() {
     Pomodoro p;
     p.enter();
@@ -231,6 +252,7 @@ int main() {
     test_phase_transition_work_to_short_break();
     test_long_break_after_n_rounds();
     test_skip_phase();
+    test_skip_phase_while_paused();
     test_exit_to_mode_select();
     test_exit_from_mode_select();
     test_btnA_click_ignored_during_running();
