@@ -14,6 +14,7 @@
 #include "net_apply.h"
 #include "time_sync_utils.h"
 #include "usb_config_service.h"
+#include "pomodoro.h"
 
 // ========== LED 点阵字体 ==========
 static const uint8_t FONT[37][7] = {
@@ -59,6 +60,7 @@ bool wifiScanRequested = false;
 bool wifiScanInProgress = false;
 
 M5Canvas sprite(&M5.Display);
+Pomodoro pomodoro;
 
 enum class DisplayMode {
     Clock,
@@ -380,10 +382,71 @@ void loop() {
                 usbConfigService.sendError(ConfigError::WifiScanFailed, "scan_failed");
             }
         }
+    } else if (pomodoro.isActive()) {
+        // --- 番茄钟活跃 ---
+        pomodoro.update(millis());
+
+        // 蜂鸣
+        if (pomodoro.shouldBeep()) {
+            M5.Speaker.tone(1000, 200);
+            pomodoro.clearBeep();
+        }
+
+        // 按键分发
+        if (M5.BtnA.wasClicked()) {
+            pomodoro.onBtnAClick();
+        }
+        static bool pomoBtnALongTriggered = false;
+        if (M5.BtnA.pressedFor(3000)) {
+            if (!pomoBtnALongTriggered) {
+                pomoBtnALongTriggered = true;
+                pomodoro.onBtnALongPress();
+            }
+        } else {
+            pomoBtnALongTriggered = false;
+        }
+
+        if (M5.BtnB.wasClicked()) {
+            pomodoro.onBtnBClick();
+        }
+        static bool pomoBtnBLongTriggered = false;
+        if (M5.BtnB.pressedFor(3000)) {
+            if (!pomoBtnBLongTriggered) {
+                pomoBtnBLongTriggered = true;
+                pomodoro.onBtnBLongPress();
+            }
+        } else {
+            pomoBtnBLongTriggered = false;
+        }
+
+        // 渲染
+        static unsigned long lastPomoUpdate = 0;
+        if (pomodoro.getState() == Pomodoro::State::ModeSelect) {
+            // 模式选择页：每次都刷新（响应按键切换）
+            drawBattery(pomodoro.getModeDisplayName());
+        } else if (millis() - lastPomoUpdate >= 1000) {
+            // 计时页：每秒更新
+            lastPomoUpdate = millis();
+            char buf[6];
+            pomodoro.getTimeDisplay(buf, sizeof(buf));
+            drawClock(buf);
+        }
     } else {
+        // --- 原有时钟/日期/电量逻辑 ---
         if (M5.BtnA.wasClicked()) {
             displayMode = static_cast<DisplayMode>(
                 (static_cast<int>(displayMode) + 1) % static_cast<int>(DisplayMode::Count));
+        }
+
+        // 长按 BtnA 3s 进入番茄钟
+        static bool clockBtnALongTriggered = false;
+        if (M5.BtnA.pressedFor(3000)) {
+            if (!clockBtnALongTriggered) {
+                clockBtnALongTriggered = true;
+                pomodoro.enter();
+            }
+        } else {
+            clockBtnALongTriggered = false;
         }
 
         if (millis() - lastUpdate >= 1000) {
