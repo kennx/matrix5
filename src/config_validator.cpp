@@ -14,7 +14,10 @@ ConfigError validateConfig(const DeviceConfig& config) {
     if (!isLenInRange(config.timezone, 1, 64)) {
         return ConfigError::InvalidField;
     }
-    if (!isLenInRange(config.ntpServer, 1, 128)) {
+    if (!config.wifiSsid.empty() && !isLenInRange(config.ntpServer, 1, 128)) {
+        return ConfigError::InvalidField;
+    }
+    if (config.wifiSsid.empty() && !config.ntpServer.empty() && config.ntpServer.size() > 128) {
         return ConfigError::InvalidField;
     }
     if (config.brightness < 1 || config.brightness > 100) {
