@@ -14,7 +14,7 @@ bool ConfigStore::save(const DeviceConfig& config) {
     ok = ok && prefs_.putString("ssid", config.wifiSsid.c_str()) >= 0;
     ok = ok && prefs_.putString("password", config.wifiPassword.c_str()) >= 0;
     ok = ok && prefs_.putString("timezone", config.timezone.c_str()) > 0;
-    ok = ok && prefs_.putString("ntp_server", config.ntpServer.c_str()) > 0;
+    ok = ok && (prefs_.putString("ntp_server", config.ntpServer.c_str()) > 0 || config.ntpServer.empty());
     ok = ok && prefs_.putUChar("brightness", config.brightness) > 0;
     return ok;
 }
