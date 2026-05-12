@@ -35,7 +35,7 @@ static const uint8_t FONT[37][7] = {
     {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04},
     {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A}, {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11},
     {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F},
-    {0x11, 0x0A, 0x04, 0x0A, 0x11, 0x00, 0x00},
+    {0x19, 0x1A, 0x04, 0x0B, 0x13, 0x00, 0x00},
 };
 
 static const uint8_t COLON[4] = {0x00, 0x01, 0x00, 0x01};
@@ -406,9 +406,15 @@ void loop() {
                 }
                 drawDate(buf);
             } else if (displayMode == DisplayMode::Battery) {
+                static int cachedBatteryLevel = -1;
+                static unsigned long lastBatteryRead = 0;
+                unsigned long now = millis();
+                if (cachedBatteryLevel < 0 || now - lastBatteryRead >= 30000) {
+                    cachedBatteryLevel = M5.Power.getBatteryLevel();
+                    lastBatteryRead = now;
+                }
                 char buf[8];
-                int level = M5.Power.getBatteryLevel();
-                snprintf(buf, sizeof(buf), "%d%%", level);
+                snprintf(buf, sizeof(buf), "%d%%", cachedBatteryLevel);
                 drawBattery(buf);
             }
         }
