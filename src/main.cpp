@@ -259,7 +259,7 @@ static void drawDate(const char* dateStr, ScreenOrientation orient) {
     sprite.pushSprite(0, 0);
 }
 
-static void drawBattery(const char* batteryStr) {
+static void drawBattery(const char* batteryStr, ScreenOrientation /*orient*/) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
 
@@ -544,7 +544,7 @@ void loop() {
         static unsigned long lastPomoUpdate = 0;
         if (pomodoro.getState() == Pomodoro::State::ModeSelect) {
             // 模式选择页：每次都刷新（响应按键切换）
-            drawBattery(pomodoro.getModeDisplayName());
+            drawBattery(pomodoro.getModeDisplayName(), orientationMgr.getOrientation());
         } else if (pomodoro.getState() == Pomodoro::State::Running) {
             // 计时页：每秒更新
             unsigned long nowMs = millis();
@@ -618,7 +618,7 @@ void loop() {
                 }
                 char buf[8];
                 snprintf(buf, sizeof(buf), "%d%%", cachedLevel);
-                drawBattery(buf);
+                drawBattery(buf, orientationMgr.getOrientation());
             }
         }
     }
