@@ -37,7 +37,7 @@ void UsbConfigService::loop() {
 }
 
 void UsbConfigService::processLine(const std::string& line) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
     DeserializationError err = deserializeJson(doc, line);
     if (err) {
         sendError(ConfigError::JsonParseFailed, err.c_str());
@@ -86,10 +86,10 @@ void UsbConfigService::processLine(const std::string& line) {
 }
 
 void UsbConfigService::sendConfig(const DeviceConfig* cfg) {
-    StaticJsonDocument<512> doc;
+    JsonDocument doc;
     doc["type"] = "config";
     if (cfg) {
-        JsonObject data = doc.createNestedObject("data");
+        JsonObject data = doc["data"].to<JsonObject>();
         data["wifiSsid"] = cfg->wifiSsid;
         data["wifiPassword"] = cfg->wifiPassword;
         data["timezone"] = cfg->timezone;
@@ -107,7 +107,7 @@ void UsbConfigService::sendScanResult(const std::string& json) {
 }
 
 void UsbConfigService::sendOk(const char* message) {
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["type"] = "ok";
     doc["message"] = message;
     serializeJson(doc, Serial);
@@ -115,7 +115,7 @@ void UsbConfigService::sendOk(const char* message) {
 }
 
 void UsbConfigService::sendError(ConfigError code, const char* message) {
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["type"] = "error";
     doc["code"] = static_cast<uint16_t>(code);
     doc["message"] = message;
