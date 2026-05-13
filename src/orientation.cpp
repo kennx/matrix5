@@ -3,7 +3,7 @@
 static ScreenOrientation orientationFromAccel(float ax, float ay) {
     if (ax < 0) ax = -ax;
     if (ay < 0) ay = -ay;
-    return (ax >= ay) ? ScreenOrientation::Landscape : ScreenOrientation::Portrait;
+    return (ax >= ay) ? ScreenOrientation::Portrait : ScreenOrientation::Landscape;
 }
 
 void OrientationManager::update(float ax, float ay, unsigned long nowMs) {
