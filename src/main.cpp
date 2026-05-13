@@ -118,36 +118,70 @@ static void drawColon(int16_t startCol, int16_t startRow) {
     }
 }
 
-static void drawClock(const char* timeStr) {
+static void drawColonRotated(int16_t startCol, int16_t startRow) {
+    drawDot(startCol + 1, startRow, WHITE);
+    drawDot(startCol + 3, startRow, WHITE);
+}
+
+static void drawClock(const char* timeStr, ScreenOrientation orient) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
 
-    int totalCols = 0;
-    int len = 0;
-    for (const char* p = timeStr; *p; p++) {
-        totalCols += (*p == ':') ? 1 : 5;
-        len++;
-    }
-    if (len > 1) totalCols += (len - 1);
+    if (orient == ScreenOrientation::Portrait) {
+        bool hasHours = (timeStr[2] == ':' && timeStr[5] == ':');
+        int col = (sprite.width() / DOT_SIZE - 10) / 2;  // 2 个数字宽 10 列，居中
+        int row = hasHours ? 8 : 12;  // 5 行或 3 行，调整顶部留白
 
-    int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
-    if (startCol < 0) startCol = 0;
-    int startRow = 10;
-    int col = startCol;
+        const char* p = timeStr;
 
-    for (const char* p = timeStr; *p; p++) {
-        if (*p == ':') {
-            drawColon(col, startRow + 1);
-            col += 1;
-        } else {
-            int idx = charIndex(*p);
-            if (idx >= 0) {
-                drawChar(col, startRow, FONT[idx]);
-            }
-            col += 5;
+        auto drawPair = [&](const char* digits) {
+            int idx0 = charIndex(digits[0]);
+            int idx1 = charIndex(digits[1]);
+            if (idx0 >= 0) drawChar(col, row, FONT[idx0]);
+            if (idx1 >= 0) drawChar(col + 6, row, FONT[idx1]);
+            row += 9;  // 7 行高 + 2 行间距
+        };
+
+        if (hasHours) {
+            drawPair(p);          // HH
+            drawColonRotated(col + 3, row);
+            row += 4;  // 1 行高 + 3 行间距
+            p += 3;
         }
-        if (*(p + 1) != '\0') {
-            col += 1;
+        drawPair(p);              // MM
+        drawColonRotated(col + 3, row);
+        row += 4;
+        p += 3;
+        drawPair(p);              // SS
+    } else {
+        // Landscape（现有逻辑，保持完全不变）
+        int totalCols = 0;
+        int len = 0;
+        for (const char* p = timeStr; *p; p++) {
+            totalCols += (*p == ':') ? 1 : 5;
+            len++;
+        }
+        if (len > 1) totalCols += (len - 1);
+
+        int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
+        if (startCol < 0) startCol = 0;
+        int startRow = 10;
+        int col = startCol;
+
+        for (const char* p = timeStr; *p; p++) {
+            if (*p == ':') {
+                drawColon(col, startRow + 1);
+                col += 1;
+            } else {
+                int idx = charIndex(*p);
+                if (idx >= 0) {
+                    drawChar(col, startRow, FONT[idx]);
+                }
+                col += 5;
+            }
+                if (*(p + 1) != '\0') {
+                    col += 1;
+                }
         }
     }
 
@@ -309,7 +343,7 @@ void setup() {
     M5.Display.fillScreen(BLACK);
 
     sprite.createSprite(M5.Display.width(), M5.Display.height());
-    drawClock("00:00:00");
+    drawClock("00:00:00", ScreenOrientation::Landscape);
 
     prefs.begin("m5stick", false);
 
@@ -473,13 +507,13 @@ void loop() {
                 lastPomoUpdate = nowMs;
                 char buf[6];
                 pomodoro.getTimeDisplay(buf, sizeof(buf));
-                drawClock(buf);
+                drawClock(buf, orientationMgr.getOrientation());
             }
         } else if (forcePomoRedraw) {
             // Paused：仅在状态/阶段变化时刷新一次
             char buf[6];
             pomodoro.getTimeDisplay(buf, sizeof(buf));
-            drawClock(buf);
+            drawClock(buf, orientationMgr.getOrientation());
         }
     } else {
         // --- 原有时钟/日期/电量逻辑 ---
@@ -511,7 +545,7 @@ void loop() {
                 } else {
                     std::strncpy(buf, "00:00:00", sizeof(buf));
                 }
-                drawClock(buf);
+                drawClock(buf, orientationMgr.getOrientation());
             } else if (displayMode == DisplayMode::Date) {
                 char buf[16];
                 if (!getLocalTime(&timeinfo) || strftime(buf, sizeof(buf), "%a %m %d", &timeinfo) == 0) {
