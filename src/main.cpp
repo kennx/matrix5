@@ -15,6 +15,7 @@
 #include "time_sync_utils.h"
 #include "usb_config_service.h"
 #include "pomodoro.h"
+#include "display_logic.h"
 #include "orientation.h"
 
 // ========== LED 点阵字体 ==========
@@ -122,6 +123,27 @@ static void drawColon(int16_t startCol, int16_t startRow) {
 static void drawColonRotated(int16_t startCol, int16_t startRow) {
     drawDot(startCol + 1, startRow, WHITE);
     drawDot(startCol + 3, startRow, WHITE);
+}
+
+static int textWidthInCols(const char* text, int len) {
+    if (len <= 0) {
+        return 0;
+    }
+    return len * 5 + (len - 1);
+}
+
+static void drawTextLine(const char* text, int len, int startCol, int row) {
+    int col = startCol;
+    for (int i = 0; i < len; i++) {
+        int idx = charIndex(text[i]);
+        if (idx >= 0) {
+            drawChar(col, row, FONT[idx]);
+        }
+        col += 5;
+        if (i + 1 < len) {
+            col += 1;
+        }
+    }
 }
 
 static void drawClock(const char* timeStr, ScreenOrientation orient) {
@@ -290,25 +312,26 @@ static void drawBattery(const char* batteryStr, ScreenOrientation orient) {
             int idx = charIndex('%');
             if (idx >= 0) drawChar(pctCol, row, FONT[idx]);
         } else {
-            // 普通字符串（如番茄钟模式名）：横向居中，垂直居中
-            int totalCols = 0;
+            // 普通字符串（如番茄钟模式名）：优先单行，超宽时分两行。
             int len = 0;
             for (const char* p = batteryStr; *p; p++) {
-                totalCols += 5;
                 len++;
             }
-            if (len > 1) totalCols += (len - 1);
 
-            int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
-            if (startCol < 0) startCol = 0;
-            int startRow = (sprite.height() / DOT_SIZE - 7) / 2;
-            int col = startCol;
-
-            for (const char* p = batteryStr; *p; p++) {
-                int idx = charIndex(*p);
-                if (idx >= 0) drawChar(col, startRow, FONT[idx]);
-                col += 5;
-                if (*(p + 1) != '\0') col += 1;
+            int split = choosePortraitTextSplit(batteryStr, sprite.width() / DOT_SIZE);
+            if (split > 0) {
+                int firstWidth = textWidthInCols(batteryStr, split);
+                int secondWidth = textWidthInCols(batteryStr + split, len - split);
+                int row = (sprite.height() / DOT_SIZE - (7 + 2 + 7)) / 2;
+                drawTextLine(batteryStr, split, (sprite.width() / DOT_SIZE - firstWidth) / 2, row);
+                row += 9;
+                drawTextLine(batteryStr + split, len - split, (sprite.width() / DOT_SIZE - secondWidth) / 2, row);
+            } else {
+                int totalCols = textWidthInCols(batteryStr, len);
+                int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
+                if (startCol < 0) startCol = 0;
+                int startRow = (sprite.height() / DOT_SIZE - 7) / 2;
+                drawTextLine(batteryStr, len, startCol, startRow);
             }
         }
     } else {
@@ -430,11 +453,19 @@ void setup() {
     cfg.internal_imu = true;
     M5.begin(cfg);
     Serial.begin(115200);
-    M5.Display.setRotation(1);
+
+    if (M5.Imu.isEnabled()) {
+        float ax, ay, az;
+        M5.Imu.getAccel(&ax, &ay, &az);
+        orientationMgr.begin(ax, ay);
+    }
+
+    ScreenOrientation initialOrient = orientationMgr.getOrientation();
+    M5.Display.setRotation(initialOrient == ScreenOrientation::Landscape ? 1 : 0);
     M5.Display.fillScreen(BLACK);
 
     sprite.createSprite(M5.Display.width(), M5.Display.height());
-    drawClock("00:00:00", ScreenOrientation::Portrait);
+    drawClock("00:00:00", initialOrient);
 
     prefs.begin("m5stick", false);
 
@@ -470,7 +501,7 @@ void loop() {
     }
 
     // 新增：方向变化时重建 sprite
-    static ScreenOrientation lastOrient = ScreenOrientation::Portrait;
+    static ScreenOrientation lastOrient = orientationMgr.getOrientation();
     ScreenOrientation currentOrient = orientationMgr.getOrientation();
     if (currentOrient != lastOrient) {
         lastOrient = currentOrient;
@@ -478,7 +509,6 @@ void loop() {
         M5.Display.setRotation(rotation);
         sprite.deleteSprite();
         sprite.createSprite(M5.Display.width(), M5.Display.height());
-        lastUpdate = 0;
         forceOrientationRedraw = true;
     }
 
@@ -489,6 +519,11 @@ void loop() {
     const bool bothButtonsPressed = M5.BtnA.pressedFor(1) && M5.BtnB.pressedFor(1);
 
     if (configModeActive) {
+        if (forceOrientationRedraw) {
+            drawConfigScreen();
+            forceOrientationRedraw = false;
+        }
+
         usbConfigService.loop();
 
         if (hasPendingConfig) {
@@ -628,8 +663,11 @@ void loop() {
             clockBtnALongTriggered = false;
         }
 
-        if (millis() - lastUpdate >= 1000) {
-            lastUpdate = millis();
+        unsigned long now = millis();
+        if (shouldRenderPeriodicFrame(now, lastUpdate, 1000, forceOrientationRedraw)) {
+            if (now - lastUpdate >= 1000) {
+                lastUpdate = now;
+            }
 
             struct tm timeinfo;
             if (displayMode == DisplayMode::Clock) {

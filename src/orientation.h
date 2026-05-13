@@ -6,6 +6,7 @@ enum class ScreenOrientation { Landscape, Portrait };
 
 class OrientationManager {
 public:
+    void begin(float ax, float ay);
     void update(float ax, float ay, unsigned long nowMs);
 
     ScreenOrientation getOrientation() const { return current_; }
@@ -15,8 +16,8 @@ public:
     static constexpr float FLAT_THRESHOLD = 0.15f;
 
 private:
-    ScreenOrientation current_ = ScreenOrientation::Portrait;
-    ScreenOrientation pending_ = ScreenOrientation::Portrait;
+    ScreenOrientation current_ = ScreenOrientation::Landscape;
+    ScreenOrientation pending_ = ScreenOrientation::Landscape;
     unsigned long pendingSince_ = 0;
     bool justChanged_ = false;
 };

@@ -1,17 +1,43 @@
 #include "orientation.h"
 
-void OrientationManager::update(float ax, float ay, unsigned long nowMs) {
+namespace {
+
+bool resolveOrientation(float ax, float ay, ScreenOrientation fallback, ScreenOrientation& orientation) {
     float absAx = ax < 0 ? -ax : ax;
     float absAy = ay < 0 ? -ay : ay;
 
-    // 平放检测：X/Y 平面没有显著重力分量时不改变方向
-    if (absAx < FLAT_THRESHOLD && absAy < FLAT_THRESHOLD) {
+    if (absAx < OrientationManager::FLAT_THRESHOLD && absAy < OrientationManager::FLAT_THRESHOLD) {
+        orientation = fallback;
+        return false;
+    }
+
+    if (absAx == absAy) {
+        orientation = fallback;
+        return false;
+    }
+
+    orientation = (absAx > absAy) ? ScreenOrientation::Portrait : ScreenOrientation::Landscape;
+    return true;
+}
+
+}  // namespace
+
+void OrientationManager::begin(float ax, float ay) {
+    ScreenOrientation initial = current_;
+    resolveOrientation(ax, ay, current_, initial);
+    current_ = initial;
+    pending_ = initial;
+    pendingSince_ = 0;
+    justChanged_ = false;
+}
+
+void OrientationManager::update(float ax, float ay, unsigned long nowMs) {
+    ScreenOrientation instant = current_;
+    if (!resolveOrientation(ax, ay, current_, instant)) {
         pending_ = current_;
         justChanged_ = false;
         return;
     }
-
-    ScreenOrientation instant = (absAx >= absAy) ? ScreenOrientation::Portrait : ScreenOrientation::Landscape;
 
     if (instant != current_) {
         if (instant != pending_) {
