@@ -218,8 +218,9 @@ static void drawDate(const char* dateStr, ScreenOrientation orient) {
         if (widths[2] > maxWidth) maxWidth = widths[2];
 
         int colBase = (sprite.width() / DOT_SIZE - maxWidth) / 2;
-        int row = 10;  // 顶部留白
         int lineHeight = 9;  // 7 行高 + 2 行间距
+        int contentHeight = 3 * lineHeight - 2;  // 最后一行不需要底部间距
+        int row = (sprite.height() / DOT_SIZE - contentHeight) / 2;
 
         for (int i = 0; i < 3; i++) {
             int col = colBase + (maxWidth - widths[i]) / 2;  // 每行独立居中
@@ -260,32 +261,76 @@ static void drawDate(const char* dateStr, ScreenOrientation orient) {
     sprite.pushSprite(0, 0);
 }
 
-static void drawBattery(const char* batteryStr, ScreenOrientation /*orient*/) {
+static void drawBattery(const char* batteryStr, ScreenOrientation orient) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
 
-    // Calculate total width dynamically for centering
-    int totalCols = 0;
-    int len = 0;
-    for (const char* p = batteryStr; *p; p++) {
-        totalCols += 5;  // each char is 5 columns wide
-        len++;
-    }
-    if (len > 1) totalCols += (len - 1);  // spacing between chars
+    if (orient == ScreenOrientation::Portrait) {
+        const char* pctPos = strchr(batteryStr, '%');
+        if (pctPos != nullptr) {
+            // 电量百分比：数字和 % 分行显示
+            int numLen = static_cast<int>(pctPos - batteryStr);
+            int numWidth = numLen * 5 + (numLen > 1 ? numLen - 1 : 0);
+            int numCol = (sprite.width() / DOT_SIZE - numWidth) / 2;
+            int pctCol = (sprite.width() / DOT_SIZE - 5) / 2;
+            int contentHeight = 7 + 2 + 7;  // 数字高 + 间距 + % 高
+            int row = (sprite.height() / DOT_SIZE - contentHeight) / 2;
 
-    int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
-    if (startCol < 0) startCol = 0;
-    int startRow = 10;
-    int col = startCol;
+            // 绘制数字
+            int col = numCol;
+            for (const char* p = batteryStr; p < pctPos; p++) {
+                int idx = charIndex(*p);
+                if (idx >= 0) drawChar(col, row, FONT[idx]);
+                col += 5;
+                if (p + 1 < pctPos) col += 1;
+            }
 
-    for (const char* p = batteryStr; *p; p++) {
-        int idx = charIndex(*p);
-        if (idx >= 0) {
-            drawChar(col, startRow, FONT[idx]);
+            // 绘制 %
+            row += 9;  // 7 高 + 2 间距
+            int idx = charIndex('%');
+            if (idx >= 0) drawChar(pctCol, row, FONT[idx]);
+        } else {
+            // 普通字符串（如番茄钟模式名）：横向居中，垂直居中
+            int totalCols = 0;
+            int len = 0;
+            for (const char* p = batteryStr; *p; p++) {
+                totalCols += 5;
+                len++;
+            }
+            if (len > 1) totalCols += (len - 1);
+
+            int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
+            if (startCol < 0) startCol = 0;
+            int startRow = (sprite.height() / DOT_SIZE - 7) / 2;
+            int col = startCol;
+
+            for (const char* p = batteryStr; *p; p++) {
+                int idx = charIndex(*p);
+                if (idx >= 0) drawChar(col, startRow, FONT[idx]);
+                col += 5;
+                if (*(p + 1) != '\0') col += 1;
+            }
         }
-        col += 5;
-        if (*(p + 1) != '\0') {
-            col += 1;
+    } else {
+        // Landscape：横向居中
+        int totalCols = 0;
+        int len = 0;
+        for (const char* p = batteryStr; *p; p++) {
+            totalCols += 5;
+            len++;
+        }
+        if (len > 1) totalCols += (len - 1);
+
+        int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
+        if (startCol < 0) startCol = 0;
+        int startRow = 10;
+        int col = startCol;
+
+        for (const char* p = batteryStr; *p; p++) {
+            int idx = charIndex(*p);
+            if (idx >= 0) drawChar(col, startRow, FONT[idx]);
+            col += 5;
+            if (*(p + 1) != '\0') col += 1;
         }
     }
 
