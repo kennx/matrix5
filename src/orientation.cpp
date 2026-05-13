@@ -13,7 +13,7 @@ void OrientationManager::update(float ax, float ay, unsigned long nowMs) {
         if (instant != pending_) {
             pending_ = instant;
             pendingSince_ = nowMs;
-        } else if (nowMs - pendingSince_ >= DEBOUNCE_MS) {
+        } else if (nowMs >= pendingSince_ + DEBOUNCE_MS) {
             current_ = pending_;
             justChanged_ = true;
             return;
