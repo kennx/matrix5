@@ -63,6 +63,7 @@ bool wifiScanInProgress = false;
 M5Canvas sprite(&M5.Display);
 Pomodoro pomodoro;
 OrientationManager orientationMgr;
+bool forceOrientationRedraw = false;
 
 enum class DisplayMode {
     Clock,
@@ -432,6 +433,8 @@ void loop() {
         M5.Display.setRotation(rotation);
         sprite.deleteSprite();
         sprite.createSprite(M5.Display.width(), M5.Display.height());
+        lastUpdate = 0;
+        forceOrientationRedraw = true;
     }
 
     if (!M5.BtnA.pressedFor(1)) {
@@ -538,7 +541,7 @@ void loop() {
         }
 
         const bool forcePomoRedraw =
-            pomodoro.getState() != stateBeforeInput || pomodoro.getPhase() != phaseBeforeInput;
+            pomodoro.getState() != stateBeforeInput || pomodoro.getPhase() != phaseBeforeInput || forceOrientationRedraw;
 
         // 渲染
         static unsigned long lastPomoUpdate = 0;
@@ -560,6 +563,7 @@ void loop() {
             pomodoro.getTimeDisplay(buf, sizeof(buf));
             drawClock(buf, orientationMgr.getOrientation());
         }
+        forceOrientationRedraw = false;
     } else {
         // --- 原有时钟/日期/电量逻辑 ---
         if (M5.BtnA.wasClicked()) {
@@ -620,6 +624,7 @@ void loop() {
                 snprintf(buf, sizeof(buf), "%d%%", cachedLevel);
                 drawBattery(buf, orientationMgr.getOrientation());
             }
+            forceOrientationRedraw = false;
         }
     }
 

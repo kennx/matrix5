@@ -56,6 +56,31 @@ static void test_diagonal_defaults_to_landscape() {
     assert(mgr.getOrientation() == ScreenOrientation::Landscape);
 }
 
+static void test_wraparound() {
+    OrientationManager mgr;
+    mgr.update(1.0f, 0.0f, 0xFFFFFFFF - 300);  // Landscape, near wraparound
+    mgr.update(0.0f, 1.0f, 0xFFFFFFFF - 300);  // Portrait, pending starts
+    // Should NOT switch yet (0ms elapsed visually, but math works due to unsigned wraparound)
+    mgr.update(0.0f, 1.0f, 0xFFFFFFFF - 100);  // 200ms later, still < 500ms
+    assert(mgr.getOrientation() == ScreenOrientation::Landscape);
+
+    mgr.update(0.0f, 1.0f, 200);  // wrapped around, total ~500ms elapsed
+    assert(mgr.getOrientation() == ScreenOrientation::Portrait);
+}
+
+static void test_repeated_direction_changes() {
+    OrientationManager mgr;
+    mgr.update(1.0f, 0.0f, 0);     // Landscape
+    mgr.update(0.0f, 1.0f, 100);   // Portrait at t=100
+    mgr.update(1.0f, 0.0f, 200);   // Landscape at t=200
+    mgr.update(0.0f, 1.0f, 300);   // Portrait at t=300
+    mgr.update(1.0f, 0.0f, 400);   // Landscape at t=400
+    assert(mgr.getOrientation() == ScreenOrientation::Landscape);  // never stable enough
+
+    mgr.update(1.0f, 0.0f, 900);   // Landscape stable at t=900
+    assert(mgr.getOrientation() == ScreenOrientation::Landscape);
+}
+
 int main() {
     test_initial_state();
     test_landscape_from_accel();
@@ -64,5 +89,7 @@ int main() {
     test_debounce_changes_after_500ms();
     test_just_changed_clears_on_next_update();
     test_diagonal_defaults_to_landscape();
+    test_wraparound();
+    test_repeated_direction_changes();
     return 0;
 }
