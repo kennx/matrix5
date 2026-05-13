@@ -12,10 +12,11 @@ public:
     bool orientationJustChanged() const { return justChanged_; }
 
     static constexpr unsigned long DEBOUNCE_MS = 500;
+    static constexpr float FLAT_THRESHOLD = 0.15f;
 
 private:
-    ScreenOrientation current_ = ScreenOrientation::Landscape;
-    ScreenOrientation pending_ = ScreenOrientation::Landscape;
+    ScreenOrientation current_ = ScreenOrientation::Portrait;
+    ScreenOrientation pending_ = ScreenOrientation::Portrait;
     unsigned long pendingSince_ = 0;
     bool justChanged_ = false;
 };

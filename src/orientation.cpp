@@ -1,13 +1,17 @@
 #include "orientation.h"
 
-static ScreenOrientation orientationFromAccel(float ax, float ay) {
-    if (ax < 0) ax = -ax;
-    if (ay < 0) ay = -ay;
-    return (ax >= ay) ? ScreenOrientation::Portrait : ScreenOrientation::Landscape;
-}
-
 void OrientationManager::update(float ax, float ay, unsigned long nowMs) {
-    ScreenOrientation instant = orientationFromAccel(ax, ay);
+    float absAx = ax < 0 ? -ax : ax;
+    float absAy = ay < 0 ? -ay : ay;
+
+    // 平放检测：X/Y 平面没有显著重力分量时不改变方向
+    if (absAx < FLAT_THRESHOLD && absAy < FLAT_THRESHOLD) {
+        pending_ = current_;
+        justChanged_ = false;
+        return;
+    }
+
+    ScreenOrientation instant = (absAx >= absAy) ? ScreenOrientation::Portrait : ScreenOrientation::Landscape;
 
     if (instant != current_) {
         if (instant != pending_) {

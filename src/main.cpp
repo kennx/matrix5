@@ -389,7 +389,7 @@ void setup() {
     M5.Display.fillScreen(BLACK);
 
     sprite.createSprite(M5.Display.width(), M5.Display.height());
-    drawClock("00:00:00", ScreenOrientation::Landscape);
+    drawClock("00:00:00", ScreenOrientation::Portrait);
 
     prefs.begin("m5stick", false);
 
@@ -425,7 +425,7 @@ void loop() {
     }
 
     // 新增：方向变化时重建 sprite
-    static ScreenOrientation lastOrient = ScreenOrientation::Landscape;
+    static ScreenOrientation lastOrient = ScreenOrientation::Portrait;
     ScreenOrientation currentOrient = orientationMgr.getOrientation();
     if (currentOrient != lastOrient) {
         lastOrient = currentOrient;
