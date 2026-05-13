@@ -188,26 +188,71 @@ static void drawClock(const char* timeStr, ScreenOrientation orient) {
     sprite.pushSprite(0, 0);
 }
 
-static void drawDate(const char* dateStr) {
+static void drawDate(const char* dateStr, ScreenOrientation orient) {
     sprite.fillSprite(BLACK);
     drawBackgroundDots();
 
-    int startCol = 2;
-    int startRow = 10;
-    int col = startCol;
+    if (orient == ScreenOrientation::Portrait) {
+        // 解析 "MON 05 13" 为三部分
+        char part1[8] = {0}, part2[8] = {0}, part3[8] = {0};
+        sscanf(dateStr, "%s %s %s", part1, part2, part3);
 
-    for (const char* p = dateStr; *p; p++) {
-        if (*p == ' ') {
-            col += 2;
-        } else {
-            int idx = charIndex(*p);
-            if (idx >= 0) {
-                drawChar(col, startRow, FONT[idx]);
+        const char* parts[3] = { part1, part2, part3 };
+        int widths[3] = { 0, 0, 0 };
+
+        // 计算每部分宽度（字符数 * 5 + 间距）
+        for (int i = 0; i < 3; i++) {
+            int len = 0;
+            for (const char* p = parts[i]; *p; p++) {
+                if (charIndex(*p) >= 0) {
+                    widths[i] += 5;
+                    len++;
+                }
             }
-            col += 5;
+            if (len > 1) widths[i] += (len - 1);
         }
-        if (*(p + 1) != '\0' && *p != ' ') {
-            col += 1;
+
+        int maxWidth = widths[0];
+        if (widths[1] > maxWidth) maxWidth = widths[1];
+        if (widths[2] > maxWidth) maxWidth = widths[2];
+
+        int colBase = (sprite.width() / DOT_SIZE - maxWidth) / 2;
+        int row = 10;  // 顶部留白
+        int lineHeight = 9;  // 7 行高 + 2 行间距
+
+        for (int i = 0; i < 3; i++) {
+            int col = colBase + (maxWidth - widths[i]) / 2;  // 每行独立居中
+            for (const char* p = parts[i]; *p; p++) {
+                int idx = charIndex(*p);
+                if (idx >= 0) {
+                    drawChar(col, row, FONT[idx]);
+                }
+                col += 5;
+                if (*(p + 1) != '\0') {
+                    col += 1;
+                }
+            }
+            row += lineHeight;
+        }
+    } else {
+        // Landscape（现有逻辑，保持完全不变）
+        int startCol = 2;
+        int startRow = 10;
+        int col = startCol;
+
+        for (const char* p = dateStr; *p; p++) {
+            if (*p == ' ') {
+                col += 2;
+            } else {
+                int idx = charIndex(*p);
+                if (idx >= 0) {
+                    drawChar(col, startRow, FONT[idx]);
+                }
+                col += 5;
+            }
+            if (*(p + 1) != '\0' && *p != ' ') {
+                col += 1;
+            }
         }
     }
 
@@ -552,7 +597,7 @@ void loop() {
                     std::strncpy(buf, "--- -- --", sizeof(buf));
                     buf[sizeof(buf) - 1] = '\0';
                 }
-                drawDate(buf);
+                drawDate(buf, orientationMgr.getOrientation());
             } else if (displayMode == DisplayMode::Battery) {
                 static float smoothedVoltage = 0;
                 static int cachedLevel = -1;
