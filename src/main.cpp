@@ -15,6 +15,7 @@
 #include "time_sync_utils.h"
 #include "usb_config_service.h"
 #include "pomodoro.h"
+#include "orientation.h"
 
 // ========== LED 点阵字体 ==========
 static const uint8_t FONT[37][7] = {
@@ -61,6 +62,7 @@ bool wifiScanInProgress = false;
 
 M5Canvas sprite(&M5.Display);
 Pomodoro pomodoro;
+OrientationManager orientationMgr;
 
 enum class DisplayMode {
     Clock,
@@ -300,6 +302,7 @@ static void enterConfigMode() {
 
 void setup() {
     auto cfg = M5.config();
+    cfg.internal_imu = true;
     M5.begin(cfg);
     Serial.begin(115200);
     M5.Display.setRotation(1);
@@ -333,6 +336,24 @@ void loop() {
     static bool suppressPomoBtnALongUntilRelease = false;
 
     M5.update();
+
+    // 新增：IMU 方向检测
+    float ax, ay, az;
+    if (M5.Imu.isEnabled()) {
+        M5.Imu.getAccel(&ax, &ay, &az);
+        orientationMgr.update(ax, ay, millis());
+    }
+
+    // 新增：方向变化时重建 sprite
+    static ScreenOrientation lastOrient = ScreenOrientation::Landscape;
+    ScreenOrientation currentOrient = orientationMgr.getOrientation();
+    if (currentOrient != lastOrient) {
+        lastOrient = currentOrient;
+        int rotation = (currentOrient == ScreenOrientation::Landscape) ? 1 : 0;
+        M5.Display.setRotation(rotation);
+        sprite.deleteSprite();
+        sprite.createSprite(M5.Display.width(), M5.Display.height());
+    }
 
     if (!M5.BtnA.pressedFor(1)) {
         suppressPomoBtnALongUntilRelease = false;
