@@ -352,14 +352,18 @@ static void drawBattery(const char* batteryStr, ScreenOrientation orient) {
             }
         }
     } else {
-        // Landscape：横向居中
+        // Landscape：横向居中，空格用窄分隔
         int totalCols = 0;
-        int len = 0;
         for (const char* p = batteryStr; *p; p++) {
-            totalCols += 5;
-            len++;
+            if (*p == ' ') {
+                totalCols += 2;
+            } else {
+                totalCols += 5;
+            }
+            if (*(p + 1) != '\0') {
+                totalCols += 1;
+            }
         }
-        if (len > 1) totalCols += (len - 1);
 
         int startCol = (sprite.width() / DOT_SIZE - totalCols) / 2;
         if (startCol < 0) startCol = 0;
@@ -367,10 +371,16 @@ static void drawBattery(const char* batteryStr, ScreenOrientation orient) {
         int col = startCol;
 
         for (const char* p = batteryStr; *p; p++) {
-            int idx = charIndex(*p);
-            if (idx >= 0) drawChar(col, startRow, FONT[idx]);
-            col += 5;
-            if (*(p + 1) != '\0') col += 1;
+            if (*p == ' ') {
+                col += 2;
+            } else {
+                int idx = charIndex(*p);
+                if (idx >= 0) drawChar(col, startRow, FONT[idx]);
+                col += 5;
+            }
+            if (*(p + 1) != '\0') {
+                col += 1;
+            }
         }
     }
 
