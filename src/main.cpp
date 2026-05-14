@@ -241,7 +241,8 @@ static void drawDate(const char* dateStr, ScreenOrientation orient) {
 
         int colBase = (sprite.width() / DOT_SIZE - maxWidth) / 2;
         int lineHeight = 9;  // 7 行高 + 2 行间距
-        int contentHeight = 3 * lineHeight - 2;  // 最后一行不需要底部间距
+        int extraGap = 3;    // 周几和日期之间的额外间距
+        int contentHeight = 3 * lineHeight - 2 + extraGap;
         int row = (sprite.height() / DOT_SIZE - contentHeight) / 2;
 
         for (int i = 0; i < 3; i++) {
@@ -257,6 +258,7 @@ static void drawDate(const char* dateStr, ScreenOrientation orient) {
                 }
             }
             row += lineHeight;
+            if (i == 0) row += extraGap;
         }
     } else {
         // Landscape（现有逻辑，保持完全不变）
