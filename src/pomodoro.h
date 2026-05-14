@@ -31,6 +31,7 @@ public:
     Phase getPhase() const;
     uint8_t getModeIndex() const;
     const char* getModeDisplayName() const;
+    void getModeWorkTimeDisplay(char* buf, size_t len) const;
     void getTimeDisplay(char* buf, size_t len) const;
 
     bool shouldBeep() const;

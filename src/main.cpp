@@ -311,8 +311,25 @@ static void drawBattery(const char* batteryStr, ScreenOrientation orient) {
             row += 9;  // 7 高 + 2 间距
             int idx = charIndex('%');
             if (idx >= 0) drawChar(pctCol, row, FONT[idx]);
+        } else if (strchr(batteryStr, ' ') != nullptr) {
+            // 空格分隔（如 "25 MIN"）：空格前后分行显示
+            const char* spacePos = strchr(batteryStr, ' ');
+            int firstLen = static_cast<int>(spacePos - batteryStr);
+            int secondLen = 0;
+            for (const char* p = spacePos + 1; *p; p++) secondLen++;
+
+            int firstWidth = textWidthInCols(batteryStr, firstLen);
+            int secondWidth = textWidthInCols(spacePos + 1, secondLen);
+            int firstCol = (sprite.width() / DOT_SIZE - firstWidth) / 2;
+            int secondCol = (sprite.width() / DOT_SIZE - secondWidth) / 2;
+            int contentHeight = 7 + 2 + 7;
+            int row = (sprite.height() / DOT_SIZE - contentHeight) / 2;
+
+            drawTextLine(batteryStr, firstLen, firstCol, row);
+            row += 9;
+            drawTextLine(spacePos + 1, secondLen, secondCol, row);
         } else {
-            // 普通字符串（如番茄钟模式名）：优先单行，超宽时分两行。
+            // 普通字符串：优先单行，超宽时分两行。
             int len = 0;
             for (const char* p = batteryStr; *p; p++) {
                 len++;
@@ -627,7 +644,9 @@ void loop() {
         static unsigned long lastPomoUpdate = 0;
         if (pomodoro.getState() == Pomodoro::State::ModeSelect) {
             // 模式选择页：每次都刷新（响应按键切换）
-            drawBattery(pomodoro.getModeDisplayName(), orientationMgr.getOrientation());
+            char modeBuf[16];
+            pomodoro.getModeWorkTimeDisplay(modeBuf, sizeof(modeBuf));
+            drawBattery(modeBuf, orientationMgr.getOrientation());
         } else if (pomodoro.getState() == Pomodoro::State::Running) {
             // 计时页：每秒更新
             unsigned long nowMs = millis();

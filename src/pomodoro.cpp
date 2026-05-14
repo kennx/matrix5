@@ -32,6 +32,10 @@ const char* Pomodoro::getModeDisplayName() const {
     return MODES[modeIndex_].name;
 }
 
+void Pomodoro::getModeWorkTimeDisplay(char* buf, size_t len) const {
+    snprintf(buf, len, "%d MIN", MODES[modeIndex_].workMin);
+}
+
 void Pomodoro::getTimeDisplay(char* buf, size_t len) const {
     int mins = remainingSeconds_ / 60;
     int secs = remainingSeconds_ % 60;
