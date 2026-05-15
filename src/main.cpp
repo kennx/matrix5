@@ -645,6 +645,7 @@ void loop() {
         if (wifiScanRequested && !wifiScanInProgress) {
             wifiScanRequested = false;
             wifiScanInProgress = true;
+            WiFi.mode(WIFI_STA); // 确保 WiFi 模块已开启，否则扫描会失败
             WiFi.scanNetworks(true);
         }
 
