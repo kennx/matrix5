@@ -21,7 +21,7 @@ constexpr CurvePoint kBaselineCurve[] = {
     {4180, 100.0f},
 };
 
-constexpr int kLearnFullMinMv = 4080;
+constexpr int kLearnFullMinMv = 3950;
 constexpr int kLearnEmptyMaxMv = 3500;
 constexpr float kDefaultDischargeRate = 8.0f;
 
@@ -51,7 +51,7 @@ int shiftMvForPercent(float percent, const BatteryProfile& profile) {
 
     const float ratio = clampPercent(percent) / 100.0f;
     const float emptyShift = static_cast<float>(static_cast<int>(profile.learnedEmptyMv) - 3350);
-    const float fullShift = static_cast<float>(static_cast<int>(profile.learnedFullMv) - 4100);
+    const float fullShift = static_cast<float>(static_cast<int>(profile.learnedFullMv) - 4180);
     const float shift = emptyShift + (fullShift - emptyShift) * ratio;
     return static_cast<int>(std::lround(shift));
 }
