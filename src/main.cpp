@@ -11,12 +11,17 @@
 #include "config_store.h"
 #include "config_types.h"
 #include "config_validator.h"
+#include "battery_estimator.h"
 #include "net_apply.h"
 #include "time_sync_utils.h"
 #include "usb_config_service.h"
 #include "pomodoro.h"
 #include "display_logic.h"
 #include "orientation.h"
+
+#ifndef BATTERY_DEBUG
+#define BATTERY_DEBUG 0
+#endif
 
 // ========== LED 点阵字体 ==========
 static const uint8_t FONT[37][7] = {
@@ -54,6 +59,9 @@ static uint8_t toBacklightLevel(uint8_t percent) {
 Preferences prefs;
 ConfigStore configStore(prefs);
 UsbConfigService usbConfigService;
+BatteryEstimator batteryEstimator;
+BatteryEstimate lastBatteryEstimate{0, 0.0f, 0.0f, false, false};
+bool hasBatteryEstimate = false;
 
 bool configModeActive = false;
 bool hasPendingConfig = false;
@@ -74,6 +82,39 @@ enum class DisplayMode {
 };
 
 static DisplayMode displayMode = DisplayMode::Clock;
+
+static bool isBatteryCharging() {
+    return M5.Power.isCharging() == m5::Power_Class::is_charging;
+}
+
+static void refreshBatteryEstimate(unsigned long nowMs) {
+    static unsigned long lastBatterySample = 0;
+    if (hasBatteryEstimate && nowMs - lastBatterySample < BatteryEstimator::SAMPLE_INTERVAL_MS) {
+        return;
+    }
+
+    BatterySample sample{M5.Power.getBatteryVoltage(), isBatteryCharging(), nowMs};
+    lastBatteryEstimate = batteryEstimator.update(sample);
+    hasBatteryEstimate = true;
+    lastBatterySample = nowMs;
+
+    if (batteryEstimator.profileDirty()) {
+        if (configStore.saveBatteryProfile(batteryEstimator.profile())) {
+            batteryEstimator.clearProfileDirty();
+        }
+    }
+
+#if BATTERY_DEBUG
+    Serial.printf(
+        "battery mv=%d chg=%d base=%.1f runtime=%.1f display=%d samples=%u\n",
+        sample.voltageMv,
+        sample.charging ? 1 : 0,
+        lastBatteryEstimate.baselinePercent,
+        lastBatteryEstimate.runtimePercent,
+        lastBatteryEstimate.displayPercent,
+        batteryEstimator.profile().sampleCount);
+#endif
+}
 
 static inline int charIndex(char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -497,6 +538,12 @@ void setup() {
     drawClock("00:00:00", initialOrient);
 
     prefs.begin("m5stick", false);
+    batteryEstimator.begin();
+    BatteryProfile storedBatteryProfile;
+    if (configStore.loadBatteryProfile(storedBatteryProfile)) {
+        batteryEstimator.loadProfile(storedBatteryProfile);
+    }
+    refreshBatteryEstimate(millis());
 
     DeviceConfig cfgData;
     const bool hasConfig = configStore.load(cfgData);
@@ -521,13 +568,15 @@ void loop() {
     static bool suppressPomoBtnALongUntilRelease = false;
 
     M5.update();
+    unsigned long nowMs = millis();
 
     // 新增：IMU 方向检测
     float ax, ay, az;
     if (M5.Imu.isEnabled()) {
         M5.Imu.getAccel(&ax, &ay, &az);
-        orientationMgr.update(ax, ay, millis());
+        orientationMgr.update(ax, ay, nowMs);
     }
+    refreshBatteryEstimate(nowMs);
 
     // 新增：方向变化时重建 sprite
     static ScreenOrientation lastOrient = orientationMgr.getOrientation();
@@ -612,7 +661,7 @@ void loop() {
         }
     } else if (pomodoro.isActive()) {
         // --- 番茄钟活跃 ---
-        pomodoro.update(millis());
+        pomodoro.update(nowMs);
         const auto stateBeforeInput = pomodoro.getState();
         const auto phaseBeforeInput = pomodoro.getPhase();
 
@@ -661,7 +710,6 @@ void loop() {
             drawBattery(modeBuf, orientationMgr.getOrientation());
         } else if (pomodoro.getState() == Pomodoro::State::Running) {
             // 计时页：每秒更新
-            unsigned long nowMs = millis();
             if (forcePomoRedraw || nowMs - lastPomoUpdate >= 1000) {
                 lastPomoUpdate = nowMs;
                 char buf[6];
@@ -694,10 +742,9 @@ void loop() {
             clockBtnALongTriggered = false;
         }
 
-        unsigned long now = millis();
-        if (shouldRenderPeriodicFrame(now, lastUpdate, 1000, forceOrientationRedraw)) {
-            if (now - lastUpdate >= 1000) {
-                lastUpdate = now;
+        if (shouldRenderPeriodicFrame(nowMs, lastUpdate, 1000, forceOrientationRedraw)) {
+            if (nowMs - lastUpdate >= 1000) {
+                lastUpdate = nowMs;
             }
 
             struct tm timeinfo;
@@ -717,25 +764,9 @@ void loop() {
                 }
                 drawDate(buf, orientationMgr.getOrientation());
             } else if (displayMode == DisplayMode::Battery) {
-                static float smoothedVoltage = 0;
-                static int cachedLevel = -1;
-                static unsigned long lastBatteryRead = 0;
-                unsigned long now = millis();
-                if (cachedLevel < 0 || now - lastBatteryRead >= 30000) {
-                    int mv = M5.Power.getBatteryVoltage();
-                    if (smoothedVoltage < 1.0f) {
-                        smoothedVoltage = mv;  // first read: seed directly
-                    } else {
-                        smoothedVoltage = smoothedVoltage * 0.7f + mv * 0.3f;  // EMA
-                    }
-                    int level = static_cast<int>((smoothedVoltage - 3300) * 100 / 800);
-                    if (level < 0) level = 0;
-                    if (level > 100) level = 100;
-                    cachedLevel = level;
-                    lastBatteryRead = now;
-                }
                 char buf[8];
-                snprintf(buf, sizeof(buf), "%d%%", cachedLevel);
+                int batteryPercent = hasBatteryEstimate ? lastBatteryEstimate.displayPercent : 0;
+                snprintf(buf, sizeof(buf), "%d%%", batteryPercent);
                 drawBattery(buf, orientationMgr.getOrientation());
             }
             forceOrientationRedraw = false;
