@@ -524,6 +524,9 @@ void setup() {
     M5.begin(cfg);
     Serial.begin(115200);
 
+    // 降低 CPU 频率到 80MHz (默认 240MHz)，节约 ~20mA 功耗，且不影响 SPI 屏幕刷新
+    setCpuFrequencyMhz(80);
+
     if (M5.Imu.isEnabled()) {
         float ax, ay, az;
         M5.Imu.getAccel(&ax, &ay, &az);
@@ -570,11 +573,15 @@ void loop() {
     M5.update();
     unsigned long nowMs = millis();
 
-    // 新增：IMU 方向检测
-    float ax, ay, az;
-    if (M5.Imu.isEnabled()) {
-        M5.Imu.getAccel(&ax, &ay, &az);
-        orientationMgr.update(ax, ay, nowMs);
+    // 新增：IMU 方向检测 (限制频率为 10Hz 节约 I2C 功耗)
+    static unsigned long lastImuUpdate = 0;
+    if (nowMs - lastImuUpdate >= 100) {
+        lastImuUpdate = nowMs;
+        float ax, ay, az;
+        if (M5.Imu.isEnabled()) {
+            M5.Imu.getAccel(&ax, &ay, &az);
+            orientationMgr.update(ax, ay, nowMs);
+        }
     }
     refreshBatteryEstimate(nowMs);
 

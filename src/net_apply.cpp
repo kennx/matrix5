@@ -16,6 +16,8 @@ ConfigError applyNetworkConfig(const DeviceConfig& config) {
         attempts++;
     }
     if (WiFi.status() != WL_CONNECTED) {
+        WiFi.disconnect(true, true);
+        WiFi.mode(WIFI_OFF);
         return ConfigError::WifiConnectFailed;
     }
 
@@ -24,7 +26,13 @@ ConfigError applyNetworkConfig(const DeviceConfig& config) {
     configTzTime(posixTz.c_str(), config.ntpServer.c_str(), "pool.ntp.org", "time.google.com");
 
     struct tm t;
-    if (!getLocalTime(&t, 5000)) {
+    bool syncSuccess = getLocalTime(&t, 5000);
+
+    // 断开 WiFi 连接并关闭 WiFi 模块，大幅度降低待机功耗 (节约 ~100mA)
+    WiFi.disconnect(true, true);
+    WiFi.mode(WIFI_OFF);
+
+    if (!syncSuccess) {
         return ConfigError::NtpSyncFailed;
     }
 
