@@ -237,9 +237,12 @@ void BatteryEstimator::maybeLearnDischargeRate(bool charging,
 }
 
 BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
-    const int compensatedMv = sample.voltageMv 
-        + (sample.backlightPercent * kMaxBacklightDropMv / 100)
-        + (sample.wifiActive ? kWifiDropMv : 0);
+    // 只在放电时补偿负载压降，充电时由充电IC直接供电
+    int compensatedMv = sample.voltageMv;
+    if (!sample.charging) {
+        compensatedMv += (sample.backlightPercent * kMaxBacklightDropMv / 100);
+        compensatedMv += (sample.wifiActive ? kWifiDropMv : 0);
+    }
 
     if (!hasSample_) {
         hasSample_ = true;
@@ -268,7 +271,7 @@ BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
     }
 
     const unsigned long elapsedSinceLast = sample.timestampMs - lastTimestampMs_;
-    if (elapsedSinceLast > SAMPLE_INTERVAL_MS) {
+    if (elapsedSinceLast > SAMPLE_INTERVAL_MS * 2) {
         filteredVoltage_ = static_cast<float>(compensatedMv);
     } else {
         filteredVoltage_ = filteredVoltage_ * 0.80f + static_cast<float>(compensatedMv) * 0.20f;
@@ -308,9 +311,8 @@ BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
     }
 
     int rounded = static_cast<int>(std::lround(candidate));
-    if (std::abs(rounded - displayPercent_) <= 1) {
-        rounded = displayPercent_;
-    }
+    // 移除 abs(rounded - displayPercent_) <= 1 的迟滞，因为 monotonic clamps 已经防止了反复横跳
+    // 这修复了充电极慢时电量百分比卡住（无法跳跃 2% 导致永远不更新）的问题
 
     displayPercent_ = rounded;
     lastCharging_ = sample.charging;

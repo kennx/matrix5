@@ -38,7 +38,7 @@ static void test_loaded_profile_shifts_same_voltage_lower() {
     const int baseline = baselineEstimate.displayPercent;
 
     estimator.begin();
-    estimator.loadProfile({3400, 4140, 0, 0.0f, 0, true});
+    estimator.loadProfile({3400, 4200, 0, 0.0f, 0, true});
     const BatteryEstimate learnedEstimate = estimator.update(sample(3900, false, 0));
 
     assert(learnedEstimate.displayPercent < baseline);
@@ -123,7 +123,7 @@ static void test_long_discharge_updates_rate_and_bias() {
 static void test_unplug_transition_does_not_start_discharge_learning() {
     BatteryEstimator estimator;
     estimator.begin();
-    estimator.loadProfile({2500, 4000, 0, 0.0f, 1, true});
+    estimator.loadProfile({2500, 4200, 0, 0.0f, 1, true});
 
     estimator.update(sample(4100, true, 0));
     estimator.clearProfileDirty();
