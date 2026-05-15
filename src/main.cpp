@@ -93,7 +93,10 @@ static void refreshBatteryEstimate(unsigned long nowMs) {
         return;
     }
 
-    BatterySample sample{M5.Power.getBatteryVoltage(), isBatteryCharging(), nowMs};
+    uint8_t currentBrightness = (M5.Display.getBrightness() * 100) / 255;
+    bool isWifiActive = (WiFi.getMode() == WIFI_STA) && (WiFi.status() == WL_CONNECTED || wifiScanInProgress);
+
+    BatterySample sample{M5.Power.getBatteryVoltage(), isBatteryCharging(), nowMs, currentBrightness, isWifiActive};
     lastBatteryEstimate = batteryEstimator.update(sample);
     hasBatteryEstimate = true;
     lastBatterySample = nowMs;
