@@ -15,6 +15,8 @@ struct BatterySample {
     int voltageMv;
     bool charging;
     unsigned long timestampMs;
+    uint8_t backlightPercent;
+    bool wifiActive;
 };
 
 struct BatteryEstimate {

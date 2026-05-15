@@ -25,6 +25,9 @@ constexpr int kLearnFullMinMv = 4080;
 constexpr int kLearnEmptyMaxMv = 3500;
 constexpr float kDefaultDischargeRate = 8.0f;
 
+constexpr int kMaxBacklightDropMv = 40;
+constexpr int kWifiDropMv = 50;
+
 float clampPercent(float percent) {
     if (percent < 0.0f) {
         return 0.0f;
