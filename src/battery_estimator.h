@@ -54,6 +54,9 @@ private:
     bool lastCharging_ = false;
     unsigned long lastTimestampMs_ = 0;
     unsigned long stateChangedAtMs_ = 0;
+    bool fullAnchorPending_ = false;
+    bool fullAnchorLearnedThisCycle_ = false;
+    int fullAnchorCandidateMv_ = 0;
     int dischargeWindowStartMv_ = 0;
     float dischargeWindowStartPercent_ = 0.0f;
     unsigned long dischargeWindowStartMs_ = 0;

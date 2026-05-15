@@ -128,6 +128,25 @@ void test_battery_profile_with_initialized_but_zero_samples_returns_false() {
     assert(loaded.initialized == false);
 }
 
+void test_battery_profile_with_out_of_range_curve_bias_returns_false() {
+    Preferences prefs;
+    ConfigStore store(prefs);
+
+    BatteryProfile invalid;
+    invalid.learnedEmptyMv = 3390;
+    invalid.learnedFullMv = 4130;
+    invalid.curveBias = 42;
+    invalid.avgDischargeRate = 6.0f;
+    invalid.sampleCount = 2;
+    invalid.initialized = true;
+
+    assert(store.saveBatteryProfile(invalid));
+
+    BatteryProfile loaded;
+    assert(!store.loadBatteryProfile(loaded));
+    assert(loaded.initialized == false);
+}
+
 int main() {
     test_device_config_roundtrip();
     test_battery_profile_roundtrip();
@@ -136,5 +155,6 @@ int main() {
     test_obviously_corrupted_battery_profile_returns_false();
     test_battery_profile_with_negative_avg_discharge_rate_returns_false();
     test_battery_profile_with_initialized_but_zero_samples_returns_false();
+    test_battery_profile_with_out_of_range_curve_bias_returns_false();
     return 0;
 }

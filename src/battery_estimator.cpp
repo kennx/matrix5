@@ -24,6 +24,8 @@ constexpr CurvePoint kBaselineCurve[] = {
 constexpr int kLearnFullMinMv = 3950;
 constexpr int kLearnEmptyMaxMv = 3500;
 constexpr float kDefaultDischargeRate = 8.0f;
+constexpr int16_t kMinCurveBias = -10;
+constexpr int16_t kMaxCurveBias = 10;
 
 constexpr int kMaxBacklightDropMv = 40;
 constexpr int kWifiDropMv = 50;
@@ -72,6 +74,9 @@ void BatteryEstimator::begin() {
     lastCharging_ = false;
     lastTimestampMs_ = 0;
     stateChangedAtMs_ = 0;
+    fullAnchorPending_ = false;
+    fullAnchorLearnedThisCycle_ = false;
+    fullAnchorCandidateMv_ = 0;
     dischargeWindowStartMv_ = 0;
     dischargeWindowStartPercent_ = 0.0f;
     dischargeWindowStartMs_ = 0;
@@ -123,18 +128,31 @@ float BatteryEstimator::baselinePercentForVoltage(int voltageMv, const BatteryPr
 }
 
 void BatteryEstimator::maybeLearnFullAnchor(bool charging, unsigned long nowMs) {
-    if (!charging || nowMs - stateChangedAtMs_ < TRANSITION_SETTLE_MS) {
+    if (charging) {
+        return;
+    }
+
+    if (!fullAnchorPending_ || fullAnchorLearnedThisCycle_ ||
+        nowMs - stateChangedAtMs_ < TRANSITION_SETTLE_MS) {
+        return;
+    }
+
+    if (fullAnchorCandidateMv_ < kLearnFullMinMv) {
+        fullAnchorPending_ = false;
         return;
     }
 
     const int currentMv = static_cast<int>(std::lround(filteredVoltage_));
     if (currentMv < kLearnFullMinMv) {
+        fullAnchorPending_ = false;
         return;
     }
 
     const uint16_t learned = blendMv(profile_.learnedFullMv, currentMv);
     if (profile_.initialized &&
         std::abs(static_cast<int>(learned) - static_cast<int>(profile_.learnedFullMv)) < 2) {
+        fullAnchorPending_ = false;
+        fullAnchorLearnedThisCycle_ = true;
         return;
     }
 
@@ -144,6 +162,8 @@ void BatteryEstimator::maybeLearnFullAnchor(bool charging, unsigned long nowMs) 
         ++profile_.sampleCount;
     }
     profileDirty_ = true;
+    fullAnchorPending_ = false;
+    fullAnchorLearnedThisCycle_ = true;
 }
 
 void BatteryEstimator::maybeLearnEmptyAnchor(bool charging, unsigned long nowMs) {
@@ -255,6 +275,9 @@ BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
         lastCharging_ = sample.charging;
         lastTimestampMs_ = sample.timestampMs;
         stateChangedAtMs_ = sample.timestampMs;
+        fullAnchorPending_ = false;
+        fullAnchorLearnedThisCycle_ = false;
+        fullAnchorCandidateMv_ = sample.charging ? compensatedMv : 0;
         dischargeWindowStartMv_ = compensatedMv;
         dischargeWindowStartPercent_ = baseline;
         dischargeWindowStartMs_ = sample.timestampMs;
@@ -268,6 +291,13 @@ BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
 
     if (sample.charging != lastCharging_) {
         stateChangedAtMs_ = sample.timestampMs;
+        if (sample.charging) {
+            fullAnchorPending_ = false;
+            fullAnchorLearnedThisCycle_ = false;
+            fullAnchorCandidateMv_ = compensatedMv;
+        } else {
+            fullAnchorPending_ = fullAnchorCandidateMv_ >= kLearnFullMinMv;
+        }
     }
 
     const unsigned long elapsedSinceLast = sample.timestampMs - lastTimestampMs_;
@@ -275,6 +305,10 @@ BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
         filteredVoltage_ = static_cast<float>(compensatedMv);
     } else {
         filteredVoltage_ = filteredVoltage_ * 0.80f + static_cast<float>(compensatedMv) * 0.20f;
+    }
+
+    if (sample.charging && compensatedMv > fullAnchorCandidateMv_) {
+        fullAnchorCandidateMv_ = compensatedMv;
     }
 
     const float baseline =

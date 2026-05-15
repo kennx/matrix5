@@ -4,6 +4,8 @@ namespace {
 
 constexpr uint16_t kMinBatteryProfileMv = 3000;
 constexpr uint16_t kMaxBatteryProfileMv = 4300;
+constexpr int16_t kMinCurveBias = -10;
+constexpr int16_t kMaxCurveBias = 10;
 
 bool isValidBatteryProfile(const BatteryProfile& profile) {
     if (profile.learnedEmptyMv < kMinBatteryProfileMv || profile.learnedEmptyMv > kMaxBatteryProfileMv) {
@@ -19,6 +21,10 @@ bool isValidBatteryProfile(const BatteryProfile& profile) {
     }
 
     if (profile.avgDischargeRate < 0.0f) {
+        return false;
+    }
+
+    if (profile.curveBias < kMinCurveBias || profile.curveBias > kMaxCurveBias) {
         return false;
     }
 

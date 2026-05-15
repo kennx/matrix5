@@ -85,11 +85,44 @@ static void test_sustained_charge_learns_full_anchor() {
 
     estimator.update(sample(4100, true, 0));
     estimator.clearProfileDirty();
-    estimator.update(sample(4110, true, 100000));
+    estimator.update(sample(4090, false, 5000));
+    estimator.update(sample(4090, false, 100000));
 
     assert(estimator.profileDirty());
     assert(estimator.profile().initialized);
-    assert(estimator.profile().learnedFullMv >= 4102);
+    assert(estimator.profile().learnedFullMv >= 4098);
+}
+
+static void test_charging_high_voltage_does_not_learn_full_anchor_before_unplug() {
+    BatteryEstimator estimator;
+    estimator.begin();
+
+    estimator.update(sample(4100, true, 0));
+    estimator.clearProfileDirty();
+    estimator.update(sample(4100, true, 100000));
+
+    assert(!estimator.profileDirty());
+    assert(!estimator.profile().initialized);
+    assert(estimator.profile().learnedFullMv == 4100);
+}
+
+static void test_full_anchor_learns_only_once_per_charge_cycle() {
+    BatteryEstimator estimator;
+    estimator.begin();
+
+    estimator.update(sample(4100, true, 0));
+    estimator.update(sample(4090, false, 5000));
+    estimator.clearProfileDirty();
+
+    estimator.update(sample(4090, false, 100000));
+    assert(estimator.profileDirty());
+    const uint16_t learnedFull = estimator.profile().learnedFullMv;
+
+    estimator.clearProfileDirty();
+    estimator.update(sample(4085, false, 105000));
+
+    assert(!estimator.profileDirty());
+    assert(estimator.profile().learnedFullMv == learnedFull);
 }
 
 static void test_low_voltage_learns_empty_anchor() {
@@ -154,6 +187,8 @@ int main() {
     test_charging_noise_does_not_drop_display();
     test_unplug_transition_delays_large_drop();
     test_sustained_charge_learns_full_anchor();
+    test_charging_high_voltage_does_not_learn_full_anchor_before_unplug();
+    test_full_anchor_learns_only_once_per_charge_cycle();
     test_low_voltage_learns_empty_anchor();
     test_long_discharge_updates_rate_and_bias();
     test_unplug_transition_does_not_start_discharge_learning();
