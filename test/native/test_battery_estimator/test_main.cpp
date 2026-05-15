@@ -3,8 +3,8 @@
 
 #include <cassert>
 
-static BatterySample sample(int mv, bool charging, unsigned long ts) {
-    return {mv, charging, ts};
+static BatterySample sample(int mv, bool charging, unsigned long ts, uint8_t backlight = 0, bool wifi = false) {
+    return {mv, charging, ts, backlight, wifi};
 }
 
 static void test_baseline_curve_3900mv_is_midrange() {
