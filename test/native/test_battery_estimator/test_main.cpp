@@ -136,6 +136,16 @@ static void test_unplug_transition_does_not_start_discharge_learning() {
     assert(estimator.profile().avgDischargeRate == 0.0f);
 }
 
+static void test_load_compensation_recovers_ocv() {
+    BatteryEstimator estimator;
+    estimator.begin();
+
+    const BatteryEstimate baseline = estimator.update(sample(3900, false, 0, 0, false));
+    const BatteryEstimate loaded = estimator.update(sample(3810, false, 5000, 100, true));
+    
+    assert(loaded.baselinePercent == baseline.baselinePercent);
+}
+
 int main() {
     test_baseline_curve_3900mv_is_midrange();
     test_baseline_clamps_at_bounds();
@@ -147,5 +157,6 @@ int main() {
     test_low_voltage_learns_empty_anchor();
     test_long_discharge_updates_rate_and_bias();
     test_unplug_transition_does_not_start_discharge_learning();
+    test_load_compensation_recovers_ocv();
     return 0;
 }

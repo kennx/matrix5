@@ -237,18 +237,22 @@ void BatteryEstimator::maybeLearnDischargeRate(bool charging,
 }
 
 BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
+    const int compensatedMv = sample.voltageMv 
+        + (sample.backlightPercent * kMaxBacklightDropMv / 100)
+        + (sample.wifiActive ? kWifiDropMv : 0);
+
     if (!hasSample_) {
         hasSample_ = true;
-        filteredVoltage_ = static_cast<float>(sample.voltageMv);
+        filteredVoltage_ = static_cast<float>(compensatedMv);
 
-        const float baseline = baselinePercentForVoltage(sample.voltageMv, profile_);
+        const float baseline = baselinePercentForVoltage(compensatedMv, profile_);
         const int display = static_cast<int>(std::lround(baseline));
 
         displayPercent_ = display;
         lastCharging_ = sample.charging;
         lastTimestampMs_ = sample.timestampMs;
         stateChangedAtMs_ = sample.timestampMs;
-        dischargeWindowStartMv_ = sample.voltageMv;
+        dischargeWindowStartMv_ = compensatedMv;
         dischargeWindowStartPercent_ = baseline;
         dischargeWindowStartMs_ = sample.timestampMs;
 
@@ -265,9 +269,9 @@ BatteryEstimate BatteryEstimator::update(const BatterySample& sample) {
 
     const unsigned long elapsedSinceLast = sample.timestampMs - lastTimestampMs_;
     if (elapsedSinceLast > SAMPLE_INTERVAL_MS) {
-        filteredVoltage_ = static_cast<float>(sample.voltageMv);
+        filteredVoltage_ = static_cast<float>(compensatedMv);
     } else {
-        filteredVoltage_ = filteredVoltage_ * 0.80f + static_cast<float>(sample.voltageMv) * 0.20f;
+        filteredVoltage_ = filteredVoltage_ * 0.80f + static_cast<float>(compensatedMv) * 0.20f;
     }
 
     const float baseline =
